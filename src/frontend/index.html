@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manus — Gesture Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0f14;
+      --surface:   #161920;
+      --border:    #252830;
+      --accent:    #6c63ff;
+      --accent2:   #00d4aa;
+      --text:      #e2e4f0;
+      --muted:     #6b7280;
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --yellow:    #f59e0b;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 0;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    header h1 span { color: var(--accent); }
+
+    #status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: .85rem;
+      color: var(--muted);
+    }
+    #status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--red);
+      flex-shrink: 0;
+      transition: background .3s;
+    }
+    #status-dot.connecting { background: var(--yellow); animation: pulse 1s infinite; }
+    #status-dot.open       { background: var(--green);  animation: none; }
+    #status-dot.closed     { background: var(--red);    animation: none; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: .3; }
+    }
+
+    /* ── Main layout ── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 24px;
+      padding: 28px 32px;
+      align-items: start;
+    }
+
+    /* ── Big gesture display ── */
+    .hero-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      min-height: 280px;
+      justify-content: center;
+    }
+    .hero-label {
+      font-size: .8rem;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: var(--muted);
+    }
+    #current-gesture {
+      font-size: 4rem;
+      font-weight: 800;
+      letter-spacing: .06em;
+      color: var(--accent);
+      transition: transform .15s ease, color .15s ease;
+    }
+    #current-gesture.pop {
+      transform: scale(1.18);
+      color: var(--accent2);
+    }
+    .meta-row {
+      display: flex;
+      gap: 24px;
+      font-size: .82rem;
+      color: var(--muted);
+    }
+    .meta-row span b { color: var(--text); }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    button {
+      padding: 8px 20px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      font-size: .85rem;
+      cursor: pointer;
+      transition: background .2s, border-color .2s;
+    }
+    button:hover { background: var(--border); }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    button.primary:hover { background: #5850e4; }
+
+    /* ── Stats panel ── */
+    .stats-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+    }
+    .stat-card .stat-title {
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .stat-card .stat-value {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--accent2);
+    }
+
+    /* ── Event log ── */
+    .log-section {
+      grid-column: 1 / -1;
+    }
+    .log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .log-header h2 {
+      font-size: .95rem;
+      font-weight: 600;
+    }
+    #log {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    #log-body {
+      display: flex;
+      flex-direction: column;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    .log-row {
+      display: grid;
+      grid-template-columns: 160px 120px 80px 1fr;
+      gap: 16px;
+      padding: 10px 20px;
+      font-size: .82rem;
+      border-bottom: 1px solid var(--border);
+      animation: slideIn .2s ease;
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-6px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .log-row:last-child { border-bottom: none; }
+    .log-row:nth-child(even) { background: rgba(255,255,255,.02); }
+    .log-row .gesture-token {
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .log-row .confidence {
+      color: var(--accent2);
+    }
+    .log-header-row {
+      display: grid;
+      grid-template-columns: 160px 120px 80px 1fr;
+      gap: 16px;
+      padding: 10px 20px;
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .empty-log {
+      padding: 32px;
+      text-align: center;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    /* ── Server status card ── */
+    .server-status-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .server-status-card h3 {
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--muted);
+    }
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: .85rem;
+    }
+    .status-row .label { color: var(--muted); }
+    .status-pill {
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: .78rem;
+      font-weight: 700;
+    }
+    .pill-green  { background: rgba(34,197,94,.15);  color: var(--green); }
+    .pill-red    { background: rgba(239,68,68,.15);  color: var(--red); }
+    .pill-yellow { background: rgba(245,158,11,.15); color: var(--yellow); }
+    .adapters-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .adapter-tag {
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: .75rem;
+      background: rgba(108,99,255,.2);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ── Test sender ── */
+    .send-section {
+      grid-column: 1 / -1;
+    }
+    .send-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+    .send-card h2 {
+      font-size: .95rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .send-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .token-btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      font-size: .85rem;
+      cursor: pointer;
+      transition: background .15s, border-color .15s, transform .1s;
+      font-weight: 600;
+    }
+    .token-btn:hover  { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .token-btn:active { transform: scale(.95); }
+
+    /* ── Footer ── */
+    footer {
+      padding: 14px 32px;
+      border-top: 1px solid var(--border);
+      font-size: .78rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Manus <span>Gesture</span> Dashboard</h1>
+  <div id="status-badge">
+    <div id="status-dot" class="connecting"></div>
+    <span id="status-text">Łączenie…</span>
+  </div>
+</header>
+
+<main>
+  <!-- Hero -->
+  <div class="hero-card">
+    <span class="hero-label">Ostatni gest</span>
+    <div id="current-gesture">—</div>
+    <div class="meta-row">
+      <span>Label: <b id="meta-label">—</b></span>
+      <span>Timestamp: <b id="meta-ts">—</b></span>
+    </div>
+    <div class="controls">
+      <button class="primary" onclick="reconnect()">Połącz ponownie</button>
+      <button onclick="clearLog()">Wyczyść log</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-panel">
+    <div class="stat-card">
+      <div class="stat-title">Odebrane zdarzenia</div>
+      <div class="stat-value" id="stat-total">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-title">Unikalne gesty</div>
+      <div class="stat-value" id="stat-unique">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-title">Ostatni gest (s temu)</div>
+      <div class="stat-value" id="stat-ago">—</div>
+    </div>
+
+    <!-- GET /status -->
+    <div class="server-status-card">
+      <h3>GET /status</h3>
+      <div class="status-row">
+        <span class="label">Model załadowany</span>
+        <span class="status-pill pill-yellow" id="srv-model">—</span>
+      </div>
+      <div class="status-row">
+        <span class="label">Połączenia WS</span>
+        <span id="srv-ws" style="font-weight:700;color:var(--accent2)">—</span>
+      </div>
+      <div class="status-row" style="flex-direction:column;align-items:flex-start;gap:6px">
+        <span class="label">Adaptery</span>
+        <div class="adapters-list" id="srv-adapters">—</div>
+      </div>
+      <div class="status-row">
+        <span class="label">Ostatni poll</span>
+        <span id="srv-last-poll" style="color:var(--muted);font-size:.78rem">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <section class="log-section">
+    <div class="log-header">
+      <h2>Historia zdarzeń</h2>
+    </div>
+    <div id="log">
+      <div class="log-header-row">
+        <span>Czas</span>
+        <span>Gest</span>
+        <span>Label</span>
+        <span>Timestamp (raw)</span>
+      </div>
+      <div id="log-body">
+        <div class="empty-log" id="empty-msg">Brak danych — oczekiwanie na połączenie…</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Test sender -->
+  <section class="send-section">
+    <div class="send-card">
+      <h2>Wyślij testowy gest (POST → serwer → broadcast do WS)</h2>
+      <div class="send-grid" id="token-buttons"></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span>ws://localhost:8000/ws/gestures</span>
+  <span id="footer-time"></span>
+</footer>
+
+<script>
+  // ── Config ──────────────────────────────────────────────────────────────
+  const WS_URL     = "ws://localhost:8000/ws/gestures";
+  const POST_URL   = "http://localhost:8000/gesture";
+  const STATUS_URL = "http://localhost:8000/status";
+  const TOKENS_URL = "http://localhost:8000/tokens";
+  // Fallback — used only if GET /tokens fails
+  const TOKENS_FALLBACK = ["STOP", "PLAY", "UP", "DOWN", "CONFIRM", "CANCEL", "MODE", "CUSTOM"];
+
+  // ── State ───────────────────────────────────────────────────────────────
+  let socket          = null;
+  let reconnectTimer  = null;
+  let intentionalClose = false;
+  let totalEvents     = 0;
+  let seenGestures    = new Set();
+  let lastEventAt     = null;
+
+  // ── DOM refs ────────────────────────────────────────────────────────────
+  const dot         = document.getElementById("status-dot");
+  const statusText  = document.getElementById("status-text");
+  const currentEl   = document.getElementById("current-gesture");
+  const metaLabel   = document.getElementById("meta-label");
+  const metaTs      = document.getElementById("meta-ts");
+  const statTotal   = document.getElementById("stat-total");
+  const statUnique  = document.getElementById("stat-unique");
+  const statAgo     = document.getElementById("stat-ago");
+  const logBody     = document.getElementById("log-body");
+  const emptyMsg    = document.getElementById("empty-msg");
+  const footerTime  = document.getElementById("footer-time");
+
+  // ── WebSocket ────────────────────────────────────────────────────────────
+  function connect() {
+    // Nie twórz drugiego połączenia, jeśli jedno już żyje
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+    intentionalClose = false;
+    setStatus("connecting", "Łączenie…");
+    socket = new WebSocket(WS_URL);
+
+    socket.onopen = () => setStatus("open", "Połączono ✓");
+
+    socket.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        handleEvent(data);
+      } catch {
+        console.warn("Niepoprawny JSON:", ev.data);
+      }
+    };
+
+    socket.onclose = () => {
+      setStatus("closed", "Rozłączono");
+      if (!intentionalClose) {
+        // auto-reconnect po 3 s — tylko jedno zaplanowane naraz
+        clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connect, 3000);
+      }
+    };
+
+    socket.onerror = () => setStatus("closed", "Błąd połączenia");
+  }
+
+  function reconnect() {
+    intentionalClose = true;
+    clearTimeout(reconnectTimer);
+    if (socket) socket.close();
+    connect();
+  }
+
+  function setStatus(state, text) {
+    dot.className = state;
+    statusText.textContent = text;
+  }
+
+  // ── Incoming event ───────────────────────────────────────────────────────
+  function handleEvent(data) {
+    const { gesture, label, timestamp } = data;
+    const now = new Date();
+
+    // update hero
+    currentEl.classList.remove("pop");
+    void currentEl.offsetWidth;           // reflow to retrigger animation
+    currentEl.classList.add("pop");
+    currentEl.textContent = gesture ?? "?";
+    metaLabel.textContent = label ?? "—";
+    metaTs.textContent    = typeof timestamp === "number"
+      ? timestamp.toFixed(3)
+      : "—";
+
+    // stats
+    totalEvents++;
+    seenGestures.add(gesture);
+    lastEventAt = Date.now();
+    statTotal.textContent  = totalEvents;
+    statUnique.textContent = seenGestures.size;
+
+    // log row
+    emptyMsg?.remove();
+    const row = document.createElement("div");
+    row.className = "log-row";
+    row.innerHTML = `
+      <span>${now.toLocaleTimeString("pl-PL", { hour12: false })}.${String(now.getMilliseconds()).padStart(3,"0")}</span>
+      <span class="gesture-token">${gesture ?? "?"}</span>
+      <span>${label ?? "—"}</span>
+      <span class="confidence">${typeof timestamp === "number" ? timestamp.toFixed(4) : "—"}</span>
+    `;
+    logBody.prepend(row);
+
+    // keep log lean
+    const rows = logBody.querySelectorAll(".log-row");
+    if (rows.length > 200) rows[rows.length - 1].remove();
+  }
+
+  // ── Clear ────────────────────────────────────────────────────────────────
+  function clearLog() {
+    logBody.innerHTML = "";
+    totalEvents = 0;
+    seenGestures.clear();
+    lastEventAt = null;
+    currentEl.textContent = "—";
+    metaLabel.textContent = metaTs.textContent = "—";
+    statTotal.textContent = statUnique.textContent = "0";
+    statAgo.textContent = "—";
+  }
+
+  // ── Token buttons ────────────────────────────────────────────────────────
+  const tokenGrid = document.getElementById("token-buttons");
+
+  function renderTokenButtons(tokens) {
+    tokenGrid.innerHTML = "";
+    tokens.forEach((token, idx) => {
+      const btn = document.createElement("button");
+      btn.className = "token-btn";
+      btn.textContent = token;
+      btn.onclick = () => sendGesture(token, idx);
+      tokenGrid.appendChild(btn);
+    });
+  }
+
+  async function loadTokens() {
+    try {
+      const resp = await fetch(TOKENS_URL);
+      if (!resp.ok) throw new Error(resp.status);
+      const data = await resp.json();
+      renderTokenButtons(data.tokens);
+    } catch {
+      // serwer niedostępny — używamy lokalnego fallbacku
+      renderTokenButtons(TOKENS_FALLBACK);
+    }
+  }
+
+  async function sendGesture(gesture, label) {
+    const payload = {
+      gesture,
+      label,
+      timestamp: Date.now() / 1000,
+    };
+    try {
+      const resp = await fetch(POST_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) console.warn("POST nie powiodło się:", resp.status);
+    } catch (err) {
+      console.error("Błąd fetch:", err);
+    }
+  }
+
+  // ── "X s temu" ticker ────────────────────────────────────────────────────
+  setInterval(() => {
+    if (lastEventAt === null) return;
+    const secs = ((Date.now() - lastEventAt) / 1000).toFixed(1);
+    statAgo.textContent = secs;
+  }, 200);
+
+  // ── Footer clock ────────────────────────────────────────────────────────
+  setInterval(() => {
+    footerTime.textContent = new Date().toLocaleTimeString("pl-PL", { hour12: false });
+  }, 1000);
+
+  // ── GET /status polling ──────────────────────────────────────────────────
+  const srvModel    = document.getElementById("srv-model");
+  const srvWs       = document.getElementById("srv-ws");
+  const srvAdapters = document.getElementById("srv-adapters");
+  const srvLastPoll = document.getElementById("srv-last-poll");
+
+  async function pollStatus() {
+    try {
+      const resp = await fetch(STATUS_URL);
+      if (!resp.ok) throw new Error(resp.status);
+      const data = await resp.json();
+
+      // model_loaded pill
+      const loaded = data.model_loaded;
+      srvModel.textContent = loaded ? "TAK" : "NIE";
+      srvModel.className   = "status-pill " + (loaded ? "pill-green" : "pill-red");
+
+      // ws_connections
+      srvWs.textContent = data.ws_connections ?? "—";
+
+      // adapters tags
+      const adapters = Array.isArray(data.adapters) ? data.adapters : [];
+      if (adapters.length === 0) {
+        srvAdapters.innerHTML = "<span style='color:var(--muted);font-size:.8rem'>brak</span>";
+      } else {
+        srvAdapters.innerHTML = adapters
+          .map(a => `<span class="adapter-tag">${a}</span>`)
+          .join("");
+      }
+
+      srvLastPoll.textContent = new Date().toLocaleTimeString("pl-PL", { hour12: false });
+    } catch {
+      srvModel.textContent = "błąd";
+      srvModel.className   = "status-pill pill-red";
+      srvLastPoll.textContent = "brak odpowiedzi";
+    }
+  }
+
+  pollStatus();
+  setInterval(pollStatus, 3000);
+
+  // ── Boot ────────────────────────────────────────────────────────────────
+  loadTokens();
+  connect();
+</script>
+</body>
+</html>

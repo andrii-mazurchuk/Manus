@@ -12,6 +12,8 @@ dependencies = [
     "pynput>=1.7",
     "paho-mqtt>=2.0",
     "pydantic>=2.12.5",
+    "python-dotenv>=1.0",
+    "requests>=2.31",
 ]
 
 [tool.uv]

@@ -1,0 +1,23 @@
+# Secrets — never commit the real .env
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# ML artefacts
+src/models/*.pkl
+src/data/*.csv
+
+# IDE
+.vscode/
+.idea/
+
+# pytest
+.pytest_cache/

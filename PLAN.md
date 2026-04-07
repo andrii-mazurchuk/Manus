@@ -66,7 +66,7 @@ Do this before the first morning. Losing time to environment issues at 9am is th
 | Scaffold FastAPI app in `api/server.py`                                                 |                                                                                           |
 | Implement `POST /gesture` endpoint accepting `GestureEvent` JSON                        | Use the contract schema exactly                                                           |
 | Implement `WebSocket /ws/gestures` endpoint                                             | Start with a mock emitter that sends fake events on a timer — don't wait for A's pipeline |
-| Verify WebSocket works with a simple HTML test page                                     |                                                                                           |
+| h a simple HTVerify WebSocket works witML test page                                     |                                                                                           |
 | Read `INTERFACE_CONTRACT.md` `BaseAdapter` spec — implement the `WebSocketAdapter` stub |                                                                                           |
 
 
