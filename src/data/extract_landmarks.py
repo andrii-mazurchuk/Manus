@@ -54,17 +54,28 @@ MODEL_URL = (
 MODEL_PATH = Path(__file__).parent.parent / "models" / "hand_landmarker.task"
 
 # ── Label mapping: dataset folder name → project token ──────────────────────
+# GESTURE_MAP = {
+#     "Cancel":       "PLAY",
+#     "02_l":          "MODE",
+#     "03_fist":       "STOP",
+#     "04_fist_moved": "STOP",
+#     "05_thumb":      "CONFIRM",
+#     "06_index":      "UP",
+#     "07_ok":         "CUSTOM",
+#     "08_palm_moved": "PLAY",
+#     "09_c":          "CANCEL",
+#     "10_down":       "DOWN",
+# }
 GESTURE_MAP = {
-    "01_palm":       "PLAY",
-    "02_l":          "MODE",
+    "PLAY":       "PLAY",
+    "MODE":          "MODE",
     "03_fist":       "STOP",
-    "04_fist_moved": "STOP",
-    "05_thumb":      "CONFIRM",
-    "06_index":      "UP",
-    "07_ok":         "CUSTOM",
-    "08_palm_moved": "PLAY",
-    "09_c":          "CANCEL",
-    "10_down":       "DOWN",
+    "CONFIRM":      "CONFIRM",
+    "UP":      "UP",
+    "CUSTOM":         "CUSTOM",
+    "PLAY": "PLAY",
+    "CANCEL":          "CANCEL",
+    "DOWN":       "DOWN",
 }
 
 OUTPUT_CSV = Path(__file__).parent / "gestures.csv"
