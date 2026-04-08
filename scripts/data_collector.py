@@ -38,6 +38,9 @@ import numpy as np
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from core.normalizer import normalize_landmarks, HAND_CONNECTIONS  # noqa: E402
+
 MODEL_PATH   = Path(__file__).parent.parent / "src" / "models" / "hand_landmarker.task"
 GESTURES_DIR = Path(__file__).parent.parent / "src" / "data" / "gestures"
 CSV_PATH     = Path(__file__).parent.parent / "src" / "data" / "gestures.csv"
@@ -68,24 +71,6 @@ TARGET_SAMPLES = 100   # per label — green when reached
 COLOR_LANDMARK   = (0, 220, 255)   # yellow
 COLOR_CONNECTION = (200, 200, 200) # light grey
 
-HAND_CONNECTIONS = [
-    (0, 1), (1, 2), (2, 3), (3, 4),
-    (0, 5), (5, 6), (6, 7), (7, 8),
-    (5, 9), (9, 10), (10, 11), (11, 12),
-    (9, 13), (13, 14), (14, 15), (15, 16),
-    (13, 17), (17, 18), (18, 19), (19, 20),
-    (0, 17),
-]
-
-
-def normalize(landmarks) -> np.ndarray:
-    """Translate to wrist origin, scale to [-1, 1]. Returns flat (42,) array."""
-    coords = np.array([[lm.x, lm.y] for lm in landmarks], dtype=np.float32)
-    coords -= coords[0]
-    scale = np.max(np.abs(coords))
-    if scale > 0:
-        coords /= scale
-    return coords.flatten()
 
 
 def count_samples() -> dict[str, int]:
@@ -262,7 +247,7 @@ def run(camera_index: int) -> None:
             if key in KEY_MAP:
                 if current_landmarks is not None:
                     label = KEY_MAP[key]
-                    flat = normalize(current_landmarks)
+                    flat = normalize_landmarks(current_landmarks)
                     save_sample(label, flat)
                     counts[label] += 1
                     last_label = label

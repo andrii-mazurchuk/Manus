@@ -16,23 +16,14 @@ from pathlib import Path
 
 import numpy as np
 
+from .normalizer import normalize_landmarks
+
 DEFAULT_MODEL_PATH = Path(__file__).parent.parent / "models" / "classifier.pkl"
 
 
 def _normalize(landmarks) -> np.ndarray:
-    """
-    Translate all landmarks to wrist origin (landmark 0), scale to [-1, 1].
-
-    landmarks: list/sequence of 21 objects with .x and .y attributes
-               (mediapipe NormalizedLandmark from either solutions or tasks API).
-    Returns a float32 array of shape (1, 42) ready for sklearn predict.
-    """
-    coords = np.array([[lm.x, lm.y] for lm in landmarks], dtype=np.float32)  # (21, 2)
-    coords -= coords[0]
-    scale = np.max(np.abs(coords))
-    if scale > 0:
-        coords /= scale
-    return coords.flatten().reshape(1, -1)  # (1, 42)
+    """Thin wrapper — returns (1, 42) shape required by sklearn predict."""
+    return normalize_landmarks(landmarks).reshape(1, -1)
 
 
 class GestureClassifier:

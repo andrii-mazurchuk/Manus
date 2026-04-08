@@ -37,6 +37,7 @@ Usage:
 
 import argparse
 import csv
+import sys
 import urllib.request
 from pathlib import Path
 
@@ -45,6 +46,9 @@ import mediapipe as mp
 import numpy as np
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.normalizer import normalize_landmarks  # noqa: E402
 
 # ── HandLandmarker model (mediapipe 0.10+ Tasks API) ────────────────────────
 MODEL_URL = (
@@ -95,20 +99,6 @@ def ensure_model() -> Path:
     return MODEL_PATH
 
 
-def normalize(landmarks) -> np.ndarray:
-    """
-    Translate all landmarks to wrist origin (landmark 0), then scale so the
-    max absolute coordinate is 1.0 — maps everything into [-1, 1].
-
-    landmarks: list of NormalizedLandmark (each has .x, .y attributes).
-    Returns a flat array of shape (42,): [x0, y0, x1, y1, ..., x20, y20].
-    """
-    coords = np.array([[lm.x, lm.y] for lm in landmarks], dtype=np.float32)  # (21, 2)
-    coords -= coords[0]          # translate: wrist → origin
-    scale = np.max(np.abs(coords))
-    if scale > 0:
-        coords /= scale          # scale to [-1, 1]
-    return coords.flatten()      # (42,)
 
 
 def process_dataset(dataset_path: str) -> None:
@@ -171,7 +161,7 @@ def process_dataset(dataset_path: str) -> None:
                             )
                             continue
 
-                        flat = normalize(result.hand_landmarks[0])
+                        flat = normalize_landmarks(result.hand_landmarks[0])
                         writer.writerow([label] + flat.tolist())
                         rows_written += 1
                         label_counts[label] = label_counts.get(label, 0) + 1
