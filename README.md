@@ -75,7 +75,28 @@ uv sync
 
 ## How To Run Everything
 
-### 1) Collect data (manual webcam labeling)
+### 1) Recommended: bootstrap dataset with augmentation
+
+This is now the fastest standard path (minimal manual capture, no hundreds of raw samples):
+
+```bash
+uv run scripts/bootstrap_augmented_dataset.py --samples 400 --retrain
+```
+
+What it does:
+
+- captures one short template for each token (`STOP`, `PLAY`, `UP`, `DOWN`, `CONFIRM`, `CANCEL`, `MODE`, `CUSTOM`)
+- generates synthetic samples per token
+- appends them to `src/data/gestures.csv` and `src/data/gestures/<LABEL>/`
+- retrains classifier automatically when `--retrain` is set
+
+If templates already exist:
+
+```bash
+uv run scripts/bootstrap_augmented_dataset.py --samples 400 --no-capture --retrain
+```
+
+### 2) Alternative: manual data collection (legacy)
 
 ```bash
 uv run scripts/data_collector.py
@@ -101,7 +122,7 @@ Hotkeys while collecting:
 
 Each capture appends one row to `src/data/gestures.csv` and one `.npy` sample under `src/data/gestures/<LABEL>/`.
 
-### 2) (Optional) Build CSV from image dataset
+### 3) (Optional) Build CSV from image dataset
 
 ```bash
 uv run src/data/extract_landmarks.py
@@ -113,7 +134,7 @@ Custom dataset path:
 uv run src/data/extract_landmarks.py --dataset src/data/leapGestRecog
 ```
 
-### 3) Train classifier
+### 4) Train classifier
 
 ```bash
 uv run scripts/train.py
@@ -132,7 +153,7 @@ Training output includes:
 - test-set classification report
 - saved `classifier.pkl` with model + label encoder
 
-### 4) Run production pipeline (`EventBus`-based)
+### 5) Run production pipeline (`EventBus`-based)
 
 ```bash
 uv run main.py
@@ -152,7 +173,7 @@ Behavior:
 - On valid token, pipeline emits `GestureEvent` to `EventBus`.
 - Default adapter prints token + confidence to terminal.
 
-### 5) Run debug capture pipeline (legacy loop)
+### 6) Run debug capture pipeline (legacy loop)
 
 ```bash
 uv run scripts/capture.py
@@ -160,7 +181,7 @@ uv run scripts/capture.py
 
 Use this when you want visualization/debug behavior from the older standalone loop.
 
-### 6) Synthetic augmentation workflow
+### 7) Single-label synthetic augmentation workflow
 
 Capture template + generate synthetic rows:
 

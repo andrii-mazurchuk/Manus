@@ -178,25 +178,36 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Reusable API
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    parser = _build_parser()
-    args   = parser.parse_args()
+def generate_for_label(
+    label: str,
+    samples: int = 500,
+    camera: int = 0,
+    capture_frames: int = 5,
+    no_capture: bool = False,
+    csv_path: Path = DEFAULT_CSV,
+    rotation_range: float = 30.0,
+    noise_sigma: float = 0.02,
+    extension_range: float = 0.10,
+    seed: int | None = None,
+) -> dict[str, object]:
+    """
+    Capture/load one template and generate synthetic rows for a single label.
 
-    label = args.label.upper()
-
-    # ── Step 1: get template ────────────────────────────────────────────────
-    print(f"\nManus Augmentation - label: {label}")
-    print("-" * 50)
-
+    Returns a compact summary dictionary so higher-level scripts can orchestrate
+    full-dataset workflows without re-parsing CLI output.
+    """
+    label = label.upper()
     capturer = GestureTemplateCapture(
-        camera_index=args.camera,
-        n_frames=args.capture_frames,
+        camera_index=camera,
+        n_frames=capture_frames,
     )
 
-    if args.no_capture:
+    print(f"\nManus Augmentation - label: {label}")
+    print("-" * 50)
+    if no_capture:
         try:
             template = capturer.load(label)
             print(f"  Template loaded from src/lab/templates/{label}.npy")
@@ -212,24 +223,24 @@ def main() -> None:
             sys.exit(f"\nAborted: {exc}")
 
     # ── Step 2: augment ─────────────────────────────────────────────────────
-    print(f"\n  Generating {args.samples} synthetic samples...")
+    print(f"\n  Generating {samples} synthetic samples...")
 
     engine = AugmentationEngine(
-        rotation_range=args.rotation_range,
-        noise_sigma=args.noise_sigma,
-        extension_range=args.extension_range,
-        seed=args.seed,
+        rotation_range=rotation_range,
+        noise_sigma=noise_sigma,
+        extension_range=extension_range,
+        seed=seed,
     )
 
     try:
-        synthetic = engine.generate(template, args.samples)
+        synthetic = engine.generate(template, samples)
     except ValueError as exc:
         sys.exit(f"ERROR: {exc}")
 
     # ── Step 3: write CSV ───────────────────────────────────────────────────
-    count_before = _count_label_rows(args.csv, label)
-    _append_to_csv(args.csv, label, synthetic)
-    count_after = count_before + args.samples
+    count_before = _count_label_rows(csv_path, label)
+    _append_to_csv(csv_path, label, synthetic)
+    count_after = count_before + samples
 
     # ── Step 4: write NPY files ─────────────────────────────────────────────
     label_dir = DEFAULT_GESTURES / label
@@ -239,23 +250,57 @@ def main() -> None:
     print(f"\n{'-' * 50}")
     print(f"  Augmentation complete")
     print(f"  Label         : {label}")
-    print(f"  Rows added    : {args.samples}")
-    print(f"  CSV rows      : {count_before} -> {count_after}   ({args.csv})")
-    print(f"  NPY files     : {label_dir}  (+{args.samples})")
-    if args.seed is not None:
-        print(f"  Seed          : {args.seed}  (reproducible)")
-    if args.retrain:
-        print("\n  Retraining classifier...")
-        import importlib.util
+    print(f"  Rows added    : {samples}")
+    print(f"  CSV rows      : {count_before} -> {count_after}   ({csv_path})")
+    print(f"  NPY files     : {label_dir}  (+{samples})")
+    if seed is not None:
+        print(f"  Seed          : {seed}  (reproducible)")
 
-        train_path = Path(__file__).parent.parent.parent / "scripts" / "train.py"
-        sys.argv = ["train.py"]
-        spec = importlib.util.spec_from_file_location("train", train_path)
-        if spec is None or spec.loader is None:
-            sys.exit(f"ERROR: could not load train module from {train_path}")
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        mod.main()
+    return {
+        "label": label,
+        "rows_added": samples,
+        "csv_path": str(csv_path),
+        "csv_before": count_before,
+        "csv_after": count_after,
+        "label_dir": str(label_dir),
+    }
+
+
+def _retrain_model() -> None:
+    print("\n  Retraining classifier...")
+    import importlib.util
+
+    train_path = Path(__file__).parent.parent.parent / "scripts" / "train.py"
+    sys.argv = ["train.py"]
+    spec = importlib.util.spec_from_file_location("train", train_path)
+    if spec is None or spec.loader is None:
+        sys.exit(f"ERROR: could not load train module from {train_path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.main()
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = _build_parser()
+    args = parser.parse_args()
+    generate_for_label(
+        label=args.label,
+        samples=args.samples,
+        camera=args.camera,
+        capture_frames=args.capture_frames,
+        no_capture=args.no_capture,
+        csv_path=args.csv,
+        rotation_range=args.rotation_range,
+        noise_sigma=args.noise_sigma,
+        extension_range=args.extension_range,
+        seed=args.seed,
+    )
+    if args.retrain:
+        _retrain_model()
     else:
         print(f"\n  Next step: uv run scripts/train.py")
 

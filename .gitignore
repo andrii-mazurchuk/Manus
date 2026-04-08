@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+
+.venv/
+
+src/lab/templates/
+
+src/data/gestures/
+src/data/gestures.csv
+src/models/*.pkl
+src/models/*.task
