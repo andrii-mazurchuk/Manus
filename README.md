@@ -1,187 +1,232 @@
-# Manus — Hand Gesture Recognition Pipeline
+# Manus
 
-Real-time hand gesture classification using MediaPipe and scikit-learn.
+Real-time hand gesture recognition with MediaPipe + scikit-learn, built around a shared core contract (`GestureEvent`) and a pluggable adapter/event-bus architecture.
 
----
+## What This Project Does
 
-## Project Structure
+- Captures hand landmarks from webcam frames (21 points).
+- Normalizes landmarks into a stable 42-float feature vector.
+- Trains and serves a classifier that predicts gesture token + confidence.
+- Emits typed events through a central `EventBus`.
+- Lets adapters consume those events (terminal now, API/WS/MQTT/PC adapters later).
 
+## Architecture
+
+```text
+Webcam -> MediaPipe HandLandmarker -> normalize_landmarks() -> GestureClassifier
+      -> GestureEvent(gesture, confidence, label, timestamp) -> EventBus -> adapters
 ```
+
+Core contracts live in `src/core`:
+
+- `GestureToken`: canonical vocabulary enum.
+- `GestureEvent`: dataclass flowing through the pipeline.
+- `BaseAdapter`: adapter interface (`on_gesture(event)`).
+- `EventBus`: thread-safe singleton pub/sub (`EventBus.get()`).
+- `normalizer.py`: shared normalization logic and `HAND_CONNECTIONS`.
+
+## Repository Layout
+
+```text
 manus/
+├── main.py                        # Production pipeline entrypoint (bus + adapters)
 ├── scripts/
-│   ├── data_collector.py        # Webcam data collection tool
-│   ├── train.py                 # Train classifier from CSV
-│   └── capture.py               # Live webcam inference pipeline
+│   ├── data_collector.py          # Interactive webcam sample collection
+│   ├── train.py                   # Model training and selection
+│   └── capture.py                 # Legacy/debug live inference loop
 ├── src/
 │   ├── core/
-│   │   └── classifier.py        # GestureClassifier inference wrapper
+│   │   ├── __init__.py
+│   │   ├── base_adapter.py
+│   │   ├── classifier.py
+│   │   ├── event_bus.py
+│   │   ├── gesture_event.py
+│   │   └── normalizer.py
 │   ├── data/
-│   │   ├── extract_landmarks.py # Dataset images -> gestures.csv
-│   │   ├── gestures.csv         # Landmark training data (generated)
-│   │   └── gestures/            # Per-label .npy snapshots (generated)
+│   │   ├── extract_landmarks.py   # Dataset images -> gestures.csv
+│   │   ├── gestures.csv           # Training rows (generated)
+│   │   └── gestures/              # Per-label .npy samples (generated)
+│   ├── lab/
+│   │   ├── augment.py
+│   │   ├── augment_gesture.py     # Template capture + synthetic generation (+ retrain)
+│   │   └── gesture_template.py
 │   └── models/
-│       ├── classifier.pkl       # Trained model (generated)
-│       └── hand_landmarker.task # MediaPipe hand model weights
-├── docs/                        # Project brief, plan, interface contract
-└── tests/                       # Webcam verification scripts
+│       ├── classifier.pkl         # Trained classifier payload (generated)
+│       └── hand_landmarker.task   # MediaPipe task model
+└── tests/
 ```
 
----
+## Gesture Vocabulary
 
-## Data Pipeline
+`STOP`, `PLAY`, `UP`, `DOWN`, `CONFIRM`, `CANCEL`, `MODE`, `CUSTOM`
 
-```
-Webcam
-  |
-  v
-MediaPipe HandLandmarker              (models/hand_landmarker.task)
-  | 21 landmarks — normalized to wrist origin, scaled to [-1, 1]
-  | flattened to 42 floats  [x0,y0, x1,y1, ..., x20,y20]
-  v
-gestures.csv  +  gestures/<LABEL>/*.npy
-  |
-  v
-Train (RandomForest + MLP, cross-validated)
-  |
-  v
-classifier.pkl                        (winning model + LabelEncoder)
-  |
-  v
-GestureClassifier.predict(landmarks)  -> (label, confidence)
-  |
-  v
-Terminal output + webcam overlay      (capture.py)
-  |
-  v
-[Event Bus -> Adapters]               (PC control / REST / WebSocket / MQTT)
-```
+## Setup
 
----
-
-## Quickstart
-
-### Prerequisites
+Prerequisites:
 
 - Python 3.11+
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) installed
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
 
-### 1. Install dependencies
+Install dependencies:
 
 ```bash
 uv sync
 ```
 
-### 2. Collect training data
+## How To Run Everything
+
+### 1) Collect data (manual webcam labeling)
 
 ```bash
-uv run python scripts/data_collector.py
+uv run scripts/data_collector.py
 ```
 
-A webcam window opens showing your hand skeleton. Press a key to snapshot the current pose:
-
-| Key | Gesture token |
-|-----|--------------|
-| `P` | PLAY         |
-| `S` | STOP         |
-| `U` | UP           |
-| `D` | DOWN         |
-| `C` | CONFIRM      |
-| `X` | CANCEL       |
-| `M` | MODE         |
-| `T` | CUSTOM       |
-| `Q` / `ESC` | quit |
-
-Aim for **100 samples per gesture**. The sidebar shows live counts and progress bars.
-Each capture saves a `.npy` file under `src/data/gestures/<LABEL>/` and appends a row to `src/data/gestures.csv`.
-
-If your webcam is not on index 0:
+Camera selection:
 
 ```bash
-uv run python scripts/data_collector.py --camera 1
+uv run scripts/data_collector.py --camera 1
 ```
 
-### 3. Train the classifier
+Hotkeys while collecting:
+
+- `P`: `PLAY`
+- `S`: `STOP`
+- `U`: `UP`
+- `D`: `DOWN`
+- `C`: `CONFIRM`
+- `X`: `CANCEL`
+- `M`: `MODE`
+- `T`: `CUSTOM`
+- `Q` or `ESC`: quit
+
+Each capture appends one row to `src/data/gestures.csv` and one `.npy` sample under `src/data/gestures/<LABEL>/`.
+
+### 2) (Optional) Build CSV from image dataset
 
 ```bash
-uv run python scripts/train.py
+uv run src/data/extract_landmarks.py
 ```
 
-This reads `src/data/gestures.csv`, trains both a RandomForest and an MLP with 5-fold cross-validation, and saves the better model to `src/models/classifier.pkl`. A classification report and class-balance warning are printed if any gesture is underrepresented.
-
-To point at a different CSV or output path:
+Custom dataset path:
 
 ```bash
-uv run python scripts/train.py --csv src/data/gestures.csv --out src/models/classifier.pkl
+uv run src/data/extract_landmarks.py --dataset src/data/leapGestRecog
 ```
 
-### 4. Run the live pipeline
+### 3) Train classifier
 
 ```bash
-uv run python scripts/capture.py
+uv run scripts/train.py
 ```
 
-If your webcam is not on index 0:
+Custom input/output:
 
 ```bash
-uv run python scripts/capture.py --camera 1
+uv run scripts/train.py --csv src/data/gestures.csv --out src/models/classifier.pkl
 ```
 
-Press **Q** or **ESC** to quit.
+Training output includes:
 
----
+- class counts
+- 5-fold CV for RandomForest and MLP
+- test-set classification report
+- saved `classifier.pkl` with model + label encoder
 
-## What You See
+### 4) Run production pipeline (`EventBus`-based)
 
-The webcam window shows:
-
-- **Hand skeleton** — 21 landmarks in yellow with grey connections
-- **Gesture label** — large text at the top of the frame
-- **Confidence bar** — fills left to right; green when ≥ 0.70 threshold, grey when below
-- **"below threshold"** — shown when confidence < 0.70
-- **FPS counter** — top right
-
-The terminal prints the detected gesture and confidence every time the label changes.
-
----
-
-## Gesture Vocabulary
-
-| Gesture | Token | Intended action |
-|---|---|---|
-| Fist | `STOP` | Mute / pause |
-| Open palm | `PLAY` | Unmute / resume |
-| Index pointing up | `UP` | Volume up / scroll up |
-| Index pointing down | `DOWN` | Volume down / scroll down |
-| Thumbs up | `CONFIRM` | Next slide / confirm |
-| Thumbs down | `CANCEL` | Previous slide / cancel |
-| Peace / V | `MODE` | Switch adapter mode |
-| OK sign | `CUSTOM` | User-defined |
-
----
-
-## Architecture
-
-```
-Webcam → MediaPipe Hands (21 landmarks / 42 floats)
-       → Gesture Classifier (RandomForest or MLP, scikit-learn)
-       → Event Bus (custom pub/sub)
-       → Adapters (PC / REST / WebSocket / MQTT)
+```bash
+uv run main.py
 ```
 
-Core contract between layers:
+Options:
+
+```bash
+uv run main.py --camera 1 --threshold 0.70
+```
+
+Behavior:
+
+- Classifier predicts `(label_str, confidence)`.
+- Below threshold: event is ignored.
+- At/above threshold: label is validated against `GestureToken`.
+- On valid token, pipeline emits `GestureEvent` to `EventBus`.
+- Default adapter prints token + confidence to terminal.
+
+### 5) Run debug capture pipeline (legacy loop)
+
+```bash
+uv run scripts/capture.py
+```
+
+Use this when you want visualization/debug behavior from the older standalone loop.
+
+### 6) Synthetic augmentation workflow
+
+Capture template + generate synthetic rows:
+
+```bash
+uv run src/lab/augment_gesture.py --label WAVE --samples 500
+```
+
+Reuse existing template:
+
+```bash
+uv run src/lab/augment_gesture.py --label WAVE --samples 500 --no-capture
+```
+
+Generate + retrain in one command:
+
+```bash
+uv run src/lab/augment_gesture.py --label WAVE --samples 500 --retrain
+```
+
+Note: `--no-capture` requires an existing template file at `src/lab/templates/<LABEL>.npy`.
+
+## Data and Model Contracts
+
+Normalization (`src/core/normalizer.py`):
+
+1. Translate coordinates so landmark `0` (wrist) is origin.
+2. Scale by max absolute coordinate so values are within `[-1, 1]`.
+3. Flatten to `(42,)` float32.
+
+Event contract (`src/core/gesture_event.py`):
 
 ```python
-GestureEvent(label: str, confidence: float, timestamp: float)
+GestureEvent(
+    gesture: GestureToken,
+    confidence: float,
+    label: int,
+    timestamp: float,
+)
 ```
 
-Every adapter subclasses `BaseAdapter` and implements one method:
+## Adapter Integration Example
+
+Any adapter must implement:
 
 ```python
 class BaseAdapter(ABC):
-    def on_gesture(self, event: GestureEvent) -> None: ...
+    def on_gesture(self, event: GestureEvent) -> None:
+        ...
 ```
 
-**Design decisions:**
-- Confidence threshold: 0.70 — detections below this are not forwarded to adapters
-- Debounce: 500 ms minimum between successive firings of the same gesture token
-- Landmarks are normalized to wrist origin and scaled to `[-1, 1]` before saving and inference, making the classifier hand-position invariant
+Register an adapter with the shared bus:
+
+```python
+from src.core.event_bus import EventBus
+
+bus = EventBus.get()
+bus.register(MyAdapter())
+```
+
+## Troubleshooting
+
+- `Model not found ... classifier.pkl`:
+  - run `uv run scripts/train.py`
+- `hand_landmarker.task not found`:
+  - run `uv run src/data/extract_landmarks.py` once (downloads model)
+- webcam open failure:
+  - retry with `--camera 1` (or another index)
+- `--no-capture` template error:
+  - run once without `--no-capture` to create template first
