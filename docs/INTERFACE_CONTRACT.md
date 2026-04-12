@@ -19,7 +19,7 @@ class GestureEvent:
     timestamp: float  # Unix timestamp, from time.time()
 ```
 
-JSON representation (used by REST and WebSocket):
+JSON representatio 
 
 ```json
 {
@@ -35,16 +35,18 @@ JSON representation (used by REST and WebSocket):
 
 These are the only valid values for `GestureEvent.label`. Classifiers and adapters must use these exact strings.
 
-| Token | Gesture | Default PC action |
-|---|---|---|
-| `STOP` | Fist | Mute / pause |
-| `PLAY` | Open palm | Unmute / resume |
-| `UP` | Index pointing up | Volume up / scroll up |
-| `DOWN` | Index pointing down | Volume down / scroll down |
-| `CONFIRM` | Thumbs up | Next slide / confirm |
-| `CANCEL` | Thumbs down | Previous slide / cancel |
-| `MODE` | Peace / V | Switch adapter mode |
-| `CUSTOM` | Shaka | User-defined |
+
+| Token     | Gesture             | Default PC action         |
+| --------- | ------------------- | ------------------------- |
+| `STOP`    | Fist                | Mute / pause              |
+| `PLAY`    | Open palm           | Unmute / resume           |
+| `UP`      | Index pointing up   | Volume up / scroll up     |
+| `DOWN`    | Index pointing down | Volume down / scroll down |
+| `CONFIRM` | Thumbs up           | Next slide / confirm      |
+| `CANCEL`  | Thumbs down         | Previous slide / cancel   |
+| `MODE`    | Peace / V           | Switch adapter mode       |
+| `CUSTOM`  | Shaka               | User-defined              |
+
 
 The event bus emits tokens. Adapters decide what tokens mean — never the classifier.
 
@@ -68,6 +70,7 @@ class BaseAdapter(ABC):
 Adapters are responsible for their own confidence threshold and debounce logic. The event bus passes every event through unfiltered.
 
 **Recommended defaults (implement in your adapter):**
+
 - Ignore events where `confidence < 0.70`
 - Debounce: ignore the same `label` if it fired within the last 500ms
 
@@ -77,15 +80,18 @@ Adapters are responsible for their own confidence threshold and debounce logic. 
 
 File location: `data/gestures.csv`
 
-| Column | Type | Description |
-|---|---|---|
-| `label` | string | One of the token constants above |
-| `x0` – `x20` | float | Normalized x coordinate for landmark 0–20 |
-| `y0` – `y20` | float | Normalized y coordinate for landmark 0–20 |
+
+| Column       | Type   | Description                               |
+| ------------ | ------ | ----------------------------------------- |
+| `label`      | string | One of the token constants above          |
+| `x0` – `x20` | float  | Normalized x coordinate for landmark 0–20 |
+| `y0` – `y20` | float  | Normalized y coordinate for landmark 0–20 |
+
 
 **Total columns:** 1 label + 42 floats = 43 columns per row.
 
 Header row must be present:
+
 ```
 label,x0,y0,x1,y1,...,x20,y20
 ```
@@ -135,12 +141,12 @@ The fingertips (4, 8, 12, 16, 20) and the wrist (0) are the most discriminative 
 
 ### REST
 
-**`POST /gesture`** — push a single gesture event (used by webhook adapter)
+`**POST /gesture**` — push a single gesture event (used by webhook adapter)
 
 Request body: `GestureEvent` JSON (see above)
 Response: `{ "status": "ok" }`
 
-**`GET /status`** — system status
+`**GET /status**` — system status
 
 ```json
 {
@@ -152,7 +158,7 @@ Response: `{ "status": "ok" }`
 
 ### WebSocket
 
-**`ws://localhost:8000/ws/gestures`** — live stream
+`**ws://localhost:8000/ws/gestures**` — live stream
 
 The server pushes a `GestureEvent` JSON message to all connected clients every time the event bus emits. No client→server messages are expected.
 
@@ -187,3 +193,4 @@ manus/
 ├── train.py                 # load CSV, train, serialize model
 └── main.py                  # wire everything together
 ```
+

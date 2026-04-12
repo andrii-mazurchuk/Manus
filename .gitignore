@@ -1,11 +1,28 @@
+# Secrets — never commit the real .env
+.env
+
+# Python
 __pycache__/
-*.pyc
-
+*.py[cod]
+*.pyo
 .venv/
+venv/
+dist/
+build/
+*.egg-info/
 
-src/lab/templates/
-
-src/data/gestures/
-src/data/gestures.csv
+# ML artefacts
 src/models/*.pkl
 src/models/*.task
+src/data/*.csv
+src/data/gestures/
+
+# Lab templates
+src/lab/templates/
+
+# IDE
+.vscode/
+.idea/
+
+# pytest
+.pytest_cache/
