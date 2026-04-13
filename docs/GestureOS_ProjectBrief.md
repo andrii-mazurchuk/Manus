@@ -199,4 +199,41 @@ By end of day 3, we have:
 
 ---
 
-*GestureOS — local hackathon, weekend of [DATE]*
+---
+
+## Phase 4 — Web Platform (post-hackathon)
+
+The MVP is delivered. Phase 4 turns the CLI-operated prototype into a self-contained web platform.
+
+**Phase 4a — Infrastructure**
+FastAPI serves the frontend as static files. `dashboard.html` (renamed from `index.html`) gets a shared nav bar. A new `studio.html` page is introduced with a two-tab structure: **Static Gestures** and **Sequences** (placeholder). API routes are modularised into a `routes/` package.
+
+**Phase 4b — Studio: Dataset**
+Camera selection dropdown (enumerates available OpenCV devices — designed for multi-camera smart home setups). Live MJPEG webcam preview. Capture N labeled samples from the UI. Bulk import via zip upload (LeapGestRecog-compatible structure).
+
+**Phase 4c — Studio: Training**
+Train button triggers background model training; frontend polls progress. Per-class accuracy shown after training. Training history log.
+
+**Phase 4d — Studio: Config**
+Gesture→action mapping editor (which gesture does what in the PC adapter). Per-adapter confidence threshold sliders. Persisted to `src/config/gesture_actions.json` and `src/config/thresholds.json`. Config is structured with `static_actions` and `sequence_actions` sections from day one.
+
+**Future pages (nav placeholders from Phase 4a):**
+- Statistics — which camera fired which gesture most; event heatmaps over time
+- Health — registered device status, camera availability, adapter connectivity
+
+---
+
+## Phase 5 — Gesture Sequence Recognition (planned)
+
+Recognise **temporal patterns of existing gesture tokens** as named sequence events. Examples:
+- UP → DOWN → UP → DOWN = "wave"
+- CONFIRM → CONFIRM = "double confirm"
+- Snap of fingers (rapid appearance and disappearance of a hand landmark) = custom trigger
+
+**Design decisions already locked in:**
+- Sequences are patterns of existing tokens — no new vocabulary is required. The sequence recogniser subscribes to the EventBus output stream.
+- The token vocabulary will grow past the current 8 tokens. The system is built to accommodate this.
+- `gesture_actions.json` has a `sequence_actions` section reserved. `thresholds.json` has a `sequence_model` key reserved.
+- The Studio Sequences tab is already present as a placeholder — implementing Phase 5 means filling it in, not restructuring the UI.
+
+*GestureOS — local hackathon, expanded post-hackathon*

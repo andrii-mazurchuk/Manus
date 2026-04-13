@@ -2,13 +2,23 @@
 
 Real-time hand gesture recognition with MediaPipe + scikit-learn, built around a shared core contract (`GestureEvent`) and a pluggable adapter/event-bus architecture.
 
+## Quickstart
+
+```bash
+uv sync                                              # install deps
+uv run main.py                                       # webcam → classifier → all adapters
+uv run uvicorn src.api.server:app --reload           # optional: start API + WebSocket server
+```
+
+That's it for running. To train a fresh model first, see [Training](#training).
+
 ## What This Project Does
 
 - Captures hand landmarks from webcam frames (21 points).
 - Normalizes landmarks into a stable 42-float feature vector.
 - Trains and serves a classifier that predicts gesture token + confidence.
 - Emits typed events through a central `EventBus`.
-- Lets adapters consume those events (terminal now, API/WS/MQTT/PC adapters later).
+- Routes events to registered adapters: Terminal, WebSocket/API, PC control, MQTT.
 
 ## Architecture
 
@@ -240,6 +250,28 @@ from src.core.event_bus import EventBus
 bus = EventBus.get()
 bus.register(MyAdapter())
 ```
+
+### Writing a Custom Adapter
+
+Subclass `BaseAdapter` and implement one method:
+
+```python
+from src.core import BaseAdapter, GestureEvent
+
+class SlackAdapter(BaseAdapter):
+    def on_gesture(self, event: GestureEvent) -> None:
+        if event.confidence < 0.80:
+            return
+        requests.post(SLACK_WEBHOOK, json={"text": f"Gesture: {event.gesture.value}"})
+```
+
+Then register it in `main.py`:
+
+```python
+bus.register(SlackAdapter())
+```
+
+That's the entire contract. `EventBus` calls `on_gesture()` for every emitted event; the adapter decides what to do with it. Add a confidence gate, debounce, or external call — anything goes.
 
 ## Troubleshooting
 

@@ -4,6 +4,8 @@ import threading
 from .base_adapter import BaseAdapter
 from .gesture_event import GestureEvent
 
+ADAPTER_DEBOUNCE_MS = 500  # minimum ms between successive firings of the same token
+
 
 class EventBus:
     _instance: "EventBus | None" = None
@@ -28,6 +30,10 @@ class EventBus:
                 adapter.on_gesture(event)
             except Exception as exc:
                 print(f"[EventBus] {adapter!r} raised: {exc}", file=sys.stderr)
+
+    def list_adapters(self) -> list[str]:
+        with self._lock:
+            return [a.__class__.__name__ for a in self._subscribers]
 
     @classmethod
     def get(cls) -> "EventBus":

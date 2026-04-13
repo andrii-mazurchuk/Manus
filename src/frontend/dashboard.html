@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Manus — Gesture Dashboard</title>
+  <title>Manus — Dashboard</title>
+  <link rel="stylesheet" href="/static/shared/styles.css">
+  <script src="/static/shared/nav.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -324,9 +326,10 @@
   </style>
 </head>
 <body>
+<script>renderNav("dashboard")</script>
 
 <header>
-  <h1>Manus <span>Gesture</span> Dashboard</h1>
+  <h1>Dashboard</h1>
   <div id="status-badge">
     <div id="status-dot" class="connecting"></div>
     <span id="status-text">Łączenie…</span>

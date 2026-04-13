@@ -13,6 +13,8 @@ from src.core.classifier import GestureClassifier
 from src.core.event_bus import EventBus
 from src.core.gesture_event import GestureEvent, GestureToken
 from src.adapters.websocket_adapter import WebSocketAdapter
+from src.adapters.pc_adapter import PCAdapter
+from src.adapters.mqtt_adapter import MQTTAdapter
 
 MODEL_PATH = Path(__file__).parent / "src" / "models" / "hand_landmarker.task"
 
@@ -27,6 +29,8 @@ def run(camera_index: int, threshold: float) -> None:
     bus = EventBus.get()
     bus.register(TerminalAdapter())
     bus.register(WebSocketAdapter())
+    bus.register(PCAdapter())
+    bus.register(MQTTAdapter())
 
     if not MODEL_PATH.exists():
         sys.exit(

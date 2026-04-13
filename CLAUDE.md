@@ -4,81 +4,113 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Manus is a real-time hand gesture recognition framework with a pluggable adapter layer. It reads webcam input, classifies hand gestures via a trained ML model, and routes typed `GestureEvent` objects to any registered adapter (PC control, REST/WebSocket API, MQTT, etc.).
+Manus is a real-time hand gesture recognition framework. It reads webcam input, classifies hand gestures via a trained ML model, and routes typed `GestureEvent` objects to any registered adapter (terminal, REST/WebSocket API, MQTT, PC control, etc.).
 
-See `GestureOS_ProjectBrief.md` for full scope, gesture vocabulary, 3-day schedule, and work-split.
+---
+
+## Commands
+
+This project uses `uv` for dependency management. All commands use `uv run`.
+
+```bash
+# Install dependencies
+uv sync
+
+# Run the full pipeline (webcam → classifier → adapters)
+uv run main.py [--camera 0] [--threshold 0.70]
+
+# Run the FastAPI server
+uv run uvicorn src.api.server:app --reload
+
+# Collect training data interactively (webcam, press keys to label snapshots)
+uv run scripts/data_collector.py
+
+# Bootstrap synthetic training data (recommended over manual collection)
+uv run scripts/bootstrap_augmented_dataset.py --samples 400 --retrain
+
+# Train classifier from CSV
+uv run scripts/train.py
+
+# Run tests
+uv run pytest
+
+# Run a single test file
+uv run pytest tests/test_api.py -v
+```
 
 ---
 
 ## Architecture
 
 ```
-Webcam → MediaPipe Hands (21 landmarks / 42 floats)
-       → Gesture Classifier (RandomForest or MLP, scikit-learn)
-       → Event Bus (custom pub/sub, ~30 lines)
-       → Adapters (PC / REST / WebSocket / MQTT)
+Webcam → MediaPipe HandLandmarker (21 landmarks / 42 floats)
+       → normalize_landmarks()         # wrist-relative, scaled to [-1, 1]
+       → GestureClassifier.predict()   # RandomForest or MLP
+       → EventBus.emit(GestureEvent)   # thread-safe singleton pub/sub
+       → Adapters                      # TerminalAdapter, WebSocketAdapter, ...
 ```
 
-**Core contract between layers:**
+### Core contracts (`src/core/`)
+
+`src/core/__init__.py` re-exports everything downstream code needs:
+
 ```python
-GestureEvent(label: str, confidence: float, timestamp: float)
+from src.core import BaseAdapter, EventBus, GestureEvent, GestureToken
+from src.core import normalize_landmarks, normalize_coords, HAND_CONNECTIONS
 ```
 
-**Adapter interface** — every adapter subclasses `BaseAdapter` and implements one method:
+**`GestureEvent`** — the object flowing through the entire pipeline:
 ```python
-class BaseAdapter(ABC):
-    def on_gesture(self, event: GestureEvent) -> None: ...
+@dataclass
+class GestureEvent:
+    gesture: GestureToken   # Canonical label enum
+    confidence: float       # Prediction score 0.0–1.0
+    label: int              # Label index from sklearn LabelEncoder
+    timestamp: float        # Unix timestamp
+
+    def to_dict(self) -> dict: ...
 ```
 
-The event bus is plain Python (no external dependency). Adapters register themselves with the bus and receive every emitted `GestureEvent`.
+**`GestureToken`** — the canonical gesture vocabulary (single source of truth shared by ML + API layers):
+`STOP | PLAY | UP | DOWN | CONFIRM | CANCEL | MODE | CUSTOM`
 
----
+**Normalization contract** (`src/core/normalizer.py`) — used identically during collection, training, augmentation, and inference:
+1. Translate: subtract landmark 0 (wrist) → wrist at origin
+2. Scale: divide by `max(abs(coords))` → values in `[-1, 1]`
+3. Flatten to 42-float array (x0, y0, x1, y1, …, x20, y20)
 
-## Tech Stack
+**`EventBus`** — thread-safe singleton (`EventBus.get()`). Adapters call `bus.register(adapter)` and receive every `GestureEvent` via `on_gesture()`. Any adapter subclasses `BaseAdapter(ABC)` and implements `on_gesture(self, event: GestureEvent) -> None`.
 
-| Concern | Library |
-|---|---|
-| Hand tracking | `mediapipe` (21 landmarks, CPU/GPU) |
-| Classification | `scikit-learn` (RandomForest / MLP) |
-| Backend / API | `FastAPI` with `uvicorn` |
-| PC control | `pyautogui`, `pynput` |
-| MQTT | `paho-mqtt` |
-| Frontend | Vanilla JS or React (WebSocket consumer) |
-| Data | CSV — 42 landmark floats + label column |
-| Python version | 3.11+ |
+### API layer (`src/api/`)
 
----
+FastAPI app with three endpoints:
+- `POST /gesture` — receives `GestureEvent` JSON, broadcasts to all WebSocket clients
+- `WS /ws/gestures` — subscribe to real-time gesture events
+- `GET /tokens` — returns the 8 canonical token strings
+- `GET /status` — returns connected adapter list + WS connection count
 
-## Planned Commands
+The `WebSocketAdapter` (`src/adapters/`) forwards pipeline events to `POST /gesture`, bridging the real-time pipeline to the API server.
 
-Once the project is scaffolded, expected commands will include:
+### Training artifacts
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Collect training data (interactive — press key to label each snapshot)
-python data_collector.py
-
-# Train classifier from CSV
-python train.py
-
-# Run the full pipeline (webcam → classifier → adapters)
-python main.py
-
-# Run the FastAPI server
-uvicorn api.server:app --reload
-
-# Run tests
-pytest
+`src/models/classifier.pkl` is a pickle-serialized dict:
+```python
+{"model": <RandomForestClassifier | MLPClassifier>, "label_encoder": <LabelEncoder>}
 ```
+
+`GestureClassifier` (`src/core/classifier.py`) loads this and exposes `predict(landmarks) -> tuple[str, float]`.
+
+Training data lives in `src/data/gestures.csv` (43 columns: `label` + 42 landmark floats). The `src/data/gestures/` directory mirrors the CSV as per-label `.npy` files.
+
+### Augmentation (`src/lab/`)
+
+`AugmentationEngine` applies rotation (±30°), Gaussian noise (σ=0.02), and scale extension (±10%) to a single captured template to produce N synthetic training rows. This is the recommended path when no large existing dataset is available.
 
 ---
 
 ## Key Design Decisions
 
-- **Confidence threshold:** ignore detections below 0.70 to reduce false positives.
-- **Debounce:** 500 ms minimum between successive firings of the same gesture token.
-- **Training data format:** CSV rows of 42 normalized landmark floats (relative to wrist position) plus a string label. Normalize coordinates before saving so the classifier is hand-position invariant.
-- **Gesture tokens** are the canonical string labels emitted by the event bus: `STOP`, `PLAY`, `UP`, `DOWN`, `CONFIRM`, `CANCEL`, `MODE`, `CUSTOM`. Adapters map tokens to actions — the classifier never knows about PC or MQTT specifics.
-- **Work split:** Person A owns the Python pipeline (MediaPipe → classifier → event bus → adapters); Person B owns FastAPI + WebSocket + JS dashboard. The boundary is the `GestureEvent` dataclass.
+- **Confidence threshold 0.70** — events below this are dropped before `EventBus.emit()`.
+- **Debounce 500 ms** — `WebSocketAdapter` suppresses repeat firings of the same token within 500 ms.
+- **`GestureToken` enum** — both the ML layer and the API Pydantic model validate against this enum; the classifier never references adapter-specific logic.
+- **Known duplication** — `src/adapters/base_adapter.py` is an exact copy of `src/core/base_adapter.py`. The canonical version is `src/core/base_adapter.py`; prefer importing from `src.core`.

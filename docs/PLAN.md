@@ -190,6 +190,83 @@ Use for anything that slipped. In priority order:
 
 ---
 
+---
+
+## Phase 4 — Web Platform & Studio
+
+**Goal:** everything that was CLI-only is now operable from the browser. No terminal knowledge required to collect data, train a model, or reconfigure the system.
+
+### Sub-Phase 4a — Infrastructure
+
+| Task | Notes |
+| ---- | ----- |
+| FastAPI serves `src/frontend/` as static files at `/static/` | `app.mount("/static", StaticFiles(...))` |
+| `GET /` redirects to `/static/dashboard.html` | |
+| `index.html` renamed to `dashboard.html` | Add shared nav bar |
+| Shared `nav.js` + `styles.css` in `src/frontend/shared/` | Renders nav across all pages; supports "coming soon" placeholders |
+| New `studio.html` — two top-level tabs: **Static Gestures** + **Sequences** | Sequences tab is a placeholder ("coming soon") |
+| API routers split into modules: `dataset.py`, `training.py`, `config.py`, `sequences.py` | `sequences.py` is a placeholder returning `{"available": false}` |
+| Token list always fetched from `GET /api/tokens` in all Studio JS | Never hardcoded — vocabulary may grow past 8 |
+
+**4a Checkpoint:** `http://localhost:8000/` opens the dashboard; `/static/studio.html` opens Studio with nav and two tabs.
+
+### Sub-Phase 4b — Studio: Dataset
+
+| Task | Notes |
+| ---- | ----- |
+| `GET /api/cameras` — enumerate available OpenCV camera indices 0–7 | Displayed as dropdown in Studio |
+| `GET /api/dataset/stats` — sample counts per label | Reads `gestures.csv` |
+| `POST /api/dataset/capture` — server captures N frames from selected camera | Runs MediaPipe, normalises, appends to CSV + `.npy` |
+| `GET /api/dataset/capture/stream?camera=N` — MJPEG preview | User sees live feed while positioning hand |
+| `POST /api/dataset/upload` — zip of labeled images (LeapGestRecog structure) | Server runs landmark extraction |
+| `DELETE /api/dataset/{label}` — remove all samples for a label | |
+
+### Sub-Phase 4c — Studio: Training
+
+| Task | Notes |
+| ---- | ----- |
+| `POST /api/train/start` — trigger training in background thread | Returns immediately |
+| `GET /api/train/status` — poll for progress and results | Frontend polls every 1s while running |
+| `GET /api/train/history` — last 5 runs with timestamp + accuracy | |
+| `scripts/train.py` refactored — `main()` → importable `run_training(csv, model) -> dict` | Training route calls this function |
+
+### Sub-Phase 4d — Studio: Config
+
+| Task | Notes |
+| ---- | ----- |
+| `src/config/gesture_actions.json` — gesture→action mapping, split into `static_actions` / `sequence_actions` sections | `sequence_actions` empty for now |
+| `src/config/thresholds.json` — per-adapter thresholds including `sequence_model` placeholder | |
+| `GET/PUT /api/config/actions` | |
+| `GET/PUT /api/config/thresholds` | |
+| `PCAdapter` reads from `gesture_actions.json` at startup; falls back to hardcoded defaults | |
+| Studio Config tab — gesture→action dropdowns (populated from `GET /api/tokens`), threshold sliders | |
+
+---
+
+## Phase 5 — Gesture Sequence Recognition
+
+**Goal:** recognise temporal patterns of existing gesture tokens (e.g. wave = UP → DOWN → UP → DOWN) as named sequence events.
+
+**Key design decisions locked in Phase 4:**
+
+- Sequences are **patterns of existing static tokens**, not a new vocabulary. The sequence recogniser watches the EventBus output stream.
+- The token vocabulary will grow past the current 8 tokens — new tokens can be added without changing the sequence layer.
+- `gesture_actions.json` already has a `sequence_actions` section; Studio already has a Sequences tab; `sequences.py` API router is already registered. Adding the feature means filling in those placeholders.
+- `thresholds.json` already reserves a `sequence_model` key.
+
+**Implementation tasks (not yet scheduled):**
+
+| Task | Notes |
+| ---- | ----- |
+| Decide sequence model type (sliding-window ML, HMM, rule-based pattern matching) | |
+| Collect sequence training data — record clips of temporal token streams | Studio Sequences tab: record mode captures a window of events |
+| Train and serialize sequence model | Separate from `classifier.pkl` |
+| Wire `SequenceRecogniser` into EventBus as a subscriber that emits secondary events | |
+| Expose `GET /api/sequences/status` already exists — expand to full dataset/train/config routes | |
+| Populate `sequence_actions` in config; Studio Sequences tab becomes functional | |
+
+---
+
 ## Risk Register
 
 

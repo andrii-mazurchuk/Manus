@@ -71,15 +71,14 @@ MODEL_PATH = Path(__file__).parent.parent / "models" / "hand_landmarker.task"
 #     "10_down":       "DOWN",
 # }
 GESTURE_MAP = {
-    "PLAY":       "PLAY",
-    "MODE":          "MODE",
-    "03_fist":       "STOP",
-    "CONFIRM":      "CONFIRM",
+    "STOP":    "STOP",
+    "PLAY":    "PLAY",
     "UP":      "UP",
-    "CUSTOM":         "CUSTOM",
-    "PLAY": "PLAY",
-    "CANCEL":          "CANCEL",
-    "DOWN":       "DOWN",
+    "DOWN":    "DOWN",
+    "CONFIRM": "CONFIRM",
+    "CANCEL":  "CANCEL",
+    "MODE":    "MODE",
+    "CUSTOM":  "CUSTOM",
 }
 
 OUTPUT_CSV = Path(__file__).parent / "gestures.csv"

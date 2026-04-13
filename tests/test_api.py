@@ -31,9 +31,11 @@ def _gesture_payload(
     gesture: str = "STOP",
     label: int = 0,
     timestamp: float | None = None,
+    confidence: float = 0.9,
 ) -> dict:
     return {
         "gesture": gesture,
+        "confidence": confidence,
         "label": label,
         "timestamp": timestamp if timestamp is not None else time.time(),
     }
@@ -162,7 +164,7 @@ class TestWebSocket:
             client.post("/gesture", json=payload)
             data = json.loads(ws.receive_text())
 
-        assert set(data.keys()) == {"gesture", "label", "timestamp"}
+        assert set(data.keys()) == {"gesture", "confidence", "label", "timestamp"}
 
     def test_sequential_broadcasts(self, client: TestClient):
         """Multiple POSTs produce multiple WS messages in order."""
@@ -248,3 +250,86 @@ class TestGetTokens:
         from_api  = set(client.get("/tokens").json()["tokens"])
         from_enum = {t.value for t in GestureToken}
         assert from_api == from_enum
+
+
+class TestStatus:
+    def test_status_returns_200(self, client: TestClient):
+        r = client.get("/status")
+        assert r.status_code == 200
+
+    def test_status_schema(self, client: TestClient):
+        r = client.get("/status")
+        data = r.json()
+        assert set(data.keys()) == {"adapters", "ws_connections", "model_loaded"}
+        assert isinstance(data["adapters"], list)
+        assert isinstance(data["ws_connections"], int)
+        assert isinstance(data["model_loaded"], bool)
+
+    def test_status_adapter_list_is_dynamic(self, client: TestClient):
+        # No adapters registered in the test-scoped EventBus — list should be empty
+        r = client.get("/status")
+        assert r.json()["adapters"] == []
+
+
+# ---------------------------------------------------------------------------
+# Training API  /api/train/*
+# ---------------------------------------------------------------------------
+
+class TestTrainingAPI:
+
+    def test_status_returns_200(self, client: TestClient):
+        assert client.get("/api/train/status").status_code == 200
+
+    def test_status_schema(self, client: TestClient):
+        data = client.get("/api/train/status").json()
+        assert {"status", "progress", "result", "last_trained", "error"} <= data.keys()
+
+    def test_initial_status_is_idle(self, client: TestClient):
+        """State starts as idle when the server first boots."""
+        import src.api.routes.training as t
+        # Ensure clean state (other tests may have run first)
+        with t._lock:
+            t._state.update(status="idle", progress="", result=None, last_trained=None, error=None)
+        assert client.get("/api/train/status").json()["status"] == "idle"
+
+    def test_status_result_is_null_when_idle(self, client: TestClient):
+        import src.api.routes.training as t
+        with t._lock:
+            t._state.update(status="idle", result=None)
+        data = client.get("/api/train/status").json()
+        assert data["result"] is None
+
+    def test_history_returns_200(self, client: TestClient):
+        assert client.get("/api/train/history").status_code == 200
+
+    def test_history_schema(self, client: TestClient):
+        data = client.get("/api/train/history").json()
+        assert "history" in data
+        assert isinstance(data["history"], list)
+
+    def test_history_empty_initially(self, client: TestClient):
+        import src.api.routes.training as t
+        with t._lock:
+            t._history.clear()
+        data = client.get("/api/train/history").json()
+        assert data["history"] == []
+
+    def test_start_missing_csv_returns_400(self, client: TestClient, tmp_path, monkeypatch):
+        """POST /start returns 400 when no CSV exists."""
+        import src.api.routes.training as t
+        monkeypatch.setattr(t, "_CSV_PATH", tmp_path / "nonexistent.csv")
+        r = client.post("/api/train/start")
+        assert r.status_code == 400
+        assert "detail" in r.json()
+
+    def test_start_already_running_returns_already_running(
+        self, client: TestClient, monkeypatch
+    ):
+        """POST /start returns already_running without spawning a thread."""
+        import src.api.routes.training as t
+        monkeypatch.setitem(t._state, "status", "running")
+        r = client.post("/api/train/start")
+        assert r.status_code == 200
+        assert r.json()["status"] == "already_running"
+        # Restore
+        monkeypatch.setitem(t._state, "status", "idle")

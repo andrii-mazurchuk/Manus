@@ -3,7 +3,8 @@ import time
 import requests
 from dotenv import load_dotenv
 
-from src.adapters.base_adapter import BaseAdapter
+from src.core.base_adapter import BaseAdapter
+from src.core.event_bus import ADAPTER_DEBOUNCE_MS
 from src.core.gesture_event import GestureEvent
 
 load_dotenv()
@@ -11,8 +12,6 @@ load_dotenv()
 _URL       = os.getenv("WS_ADAPTER_URL","http://localhost:8000/gesture")
 _THRESHOLD = float(os.getenv("WS_ADAPTER_CONFIDENCE_THRESHOLD", "0.70"))
 _TIMEOUT   = float(os.getenv("WS_ADAPTER_REQUEST_TIMEOUT",       "0.1"))
-
-DEBOUNCE_MS = 500
 
 
 class WebSocketAdapter(BaseAdapter):
@@ -41,7 +40,7 @@ class WebSocketAdapter(BaseAdapter):
             return
 
         now_ms = time.monotonic() * 1000
-        if now_ms - self._last_fired.get(event.gesture, 0) < DEBOUNCE_MS:
+        if now_ms - self._last_fired.get(event.gesture, 0) < ADAPTER_DEBOUNCE_MS:
             return
         self._last_fired[event.gesture] = now_ms
 
