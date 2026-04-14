@@ -18,6 +18,10 @@ from sklearn.preprocessing import LabelEncoder
 
 DEFAULT_CSV   = Path("src/data/gestures.csv")
 DEFAULT_MODEL = Path("src/models/classifier.pkl")
+
+DEFAULT_TWO_HAND_CSV   = Path("src/data/gestures_two_hand.csv")
+DEFAULT_TWO_HAND_MODEL = Path("src/models/classifier_two_hand.pkl")
+
 TARGET_ACCURACY = 0.88
 
 

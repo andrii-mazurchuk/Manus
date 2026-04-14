@@ -20,7 +20,10 @@ Usage:
 from __future__ import annotations
 
 import numpy as np
-from core.normalizer import normalize_coords
+try:
+    from src.core.normalizer import normalize_coords   # API import context
+except ImportError:
+    from core.normalizer import normalize_coords       # script / direct context
 
 # ---------------------------------------------------------------------------
 # Finger anatomy — MediaPipe landmark indices
@@ -184,6 +187,41 @@ def _flip_horizontal(coords: np.ndarray) -> np.ndarray:
     return result.astype(np.float32)
 
 
+def _renormalize_two_hand(all84: np.ndarray) -> np.ndarray:
+    """
+    Renormalize an 84-float two-hand array after augmentation transforms.
+
+    Contract: primary wrist ends up at (0, 0). Both halves are divided by
+    the same scale (primary max-abs), preserving inter-hand geometry.
+    Mirrors normalize_two_hand_landmarks() in src/core/normalizer.py.
+
+    Args:
+        all84: (84,) flat array [primary_42 | secondary_42].
+
+    Returns:
+        (84,) float32 renormalized array.
+    """
+    primary   = all84[:42].reshape(21, 2).copy()
+    secondary = all84[42:].reshape(21, 2).copy()
+    secondary_absent = np.all(all84[42:] == 0.0)
+
+    wrist = primary[0].copy()
+    primary -= wrist
+    if not secondary_absent:
+        secondary -= wrist
+
+    scale = float(np.max(np.abs(primary)))
+    if scale > 0:
+        primary /= scale
+        if not secondary_absent:
+            secondary /= scale
+
+    if secondary_absent:
+        secondary = np.zeros((21, 2), dtype=np.float32)
+
+    return np.concatenate([primary.flatten(), secondary.flatten()]).astype(np.float32)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -294,5 +332,137 @@ class AugmentationEngine:
             coords = _renormalize(coords)
 
             results[i] = coords.flatten()
+
+        return results
+
+
+class TwoHandAugmentationEngine:
+    """
+    Generates synthetic two-hand training samples from a single 84-float template.
+
+    The 84-float vector is [primary_42 | secondary_42] where both halves share
+    the primary wrist's coordinate frame. Transforms are applied coherently:
+    rotation and global scale use the same random value for both halves so that
+    inter-hand geometry (distance, relative angle) is preserved. Finger
+    extension and spread are independent per hand.
+
+    If the secondary half of the template is all zeros (single-hand capture),
+    transforms are applied only to the primary half and the secondary remains
+    zero-padded in all output rows.
+
+    Thread-safety: generate() is stateful (advances the RNG). Do not share an
+    engine instance across threads without external locking.
+
+    Args:
+        rotation_range:  Max ± degrees for whole-hand 2D rotation.
+        noise_sigma:     Std-dev of per-landmark Gaussian noise.
+        extension_range: Max ± fraction for finger extension/curl perturbation.
+        scale_range:     Max ± fraction for global scale variation.
+        spread_range:    Max ± degrees for lateral finger spread.
+        include_flip:    Whether to randomly mirror both hands (x → -x).
+        seed:            RNG seed for reproducibility (None = OS entropy).
+    """
+
+    def __init__(
+        self,
+        rotation_range: float = 30.0,
+        noise_sigma: float = 0.02,
+        extension_range: float = 0.10,
+        scale_range: float = 0.05,
+        spread_range: float = 5.0,
+        include_flip: bool = True,
+        seed: int | None = None,
+    ) -> None:
+        self.rotation_range  = rotation_range
+        self.noise_sigma     = noise_sigma
+        self.extension_range = extension_range
+        self.scale_range     = scale_range
+        self.spread_range    = spread_range
+        self.include_flip    = include_flip
+        self._rng = np.random.default_rng(seed)
+
+    def generate(self, template: np.ndarray, n_samples: int) -> np.ndarray:
+        """
+        Generate n_samples augmented rows from an 84-float two-hand template.
+
+        Args:
+            template:  (84,) float32 — [primary_42 | secondary_42],
+                       both in primary-wrist-origin, primary-scale frame.
+            n_samples: Number of synthetic rows to produce.
+
+        Returns:
+            (n_samples, 84) float32 array. Each row is an independently
+            augmented variant of the template, renormalized so the primary
+            wrist is at the origin and both halves share the same scale.
+
+        Raises:
+            ValueError: if template.shape != (84,) or primary half is degenerate.
+        """
+        if template.shape != (84,):
+            raise ValueError(
+                f"Expected template shape (84,), got {template.shape}."
+            )
+
+        primary_pts = template[:42].reshape(21, 2)
+        if np.max(np.abs(primary_pts[1:])) < 1e-6:
+            raise ValueError(
+                "Template is degenerate: primary hand has no landmark spread. "
+                "The template was likely captured with no hand in frame."
+            )
+
+        secondary_absent = np.all(template[42:] == 0.0)
+        rng     = self._rng
+        results = np.empty((n_samples, 84), dtype=np.float32)
+
+        for i in range(n_samples):
+            primary   = template[:42].reshape(21, 2).copy()
+            secondary = template[42:].reshape(21, 2).copy()
+
+            # 1. Rotation — SAME angle for both halves (preserves inter-hand angle)
+            angle   = float(rng.uniform(-self.rotation_range, self.rotation_range))
+            primary = _rotate_2d(primary, angle)
+            if not secondary_absent:
+                secondary = _rotate_2d(secondary, angle)
+
+            # 2. Noise — independent per coordinate on each half
+            primary = _add_noise(primary, self.noise_sigma, rng)
+            if not secondary_absent:
+                secondary = _add_noise(secondary, self.noise_sigma, rng)
+
+            # 3. Finger extension — independent per hand, per finger
+            for finger_name in FINGER_GROUPS:
+                primary = _perturb_extension(primary, finger_name, self.extension_range, rng)
+            if not secondary_absent:
+                for finger_name in FINGER_GROUPS:
+                    secondary = _perturb_extension(secondary, finger_name, self.extension_range, rng)
+
+            # 4. Global scale — SAME factor to both halves (70% probability)
+            #    Cannot use _vary_scale() here: it generates its own rng draw internally,
+            #    so calling it twice would produce two independent factors, breaking
+            #    inter-hand distance. Draw once and multiply both halves manually.
+            if rng.random() < 0.70:
+                factor = float(1.0 + rng.uniform(-self.scale_range, self.scale_range))
+                primary   = (primary   * factor).astype(np.float32)
+                if not secondary_absent:
+                    secondary = (secondary * factor).astype(np.float32)
+
+            # 5. Lateral spread — independent per hand, per finger (50% per finger)
+            for finger_name in FINGER_GROUPS:
+                if rng.random() < 0.50:
+                    primary = _vary_spread(primary, finger_name, self.spread_range, rng)
+            if not secondary_absent:
+                for finger_name in FINGER_GROUPS:
+                    if rng.random() < 0.50:
+                        secondary = _vary_spread(secondary, finger_name, self.spread_range, rng)
+
+            # 6. Horizontal flip — SAME decision for both (30% probability, if enabled)
+            if self.include_flip and rng.random() < 0.30:
+                primary   = _flip_horizontal(primary)
+                if not secondary_absent:
+                    secondary = _flip_horizontal(secondary)
+
+            # 7. Two-hand renormalize (mandatory — primary wrist at origin, shared scale)
+            combined   = np.concatenate([primary.flatten(), secondary.flatten()])
+            results[i] = _renormalize_two_hand(combined)
 
         return results
