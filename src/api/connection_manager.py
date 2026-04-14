@@ -1,6 +1,8 @@
+import json
 from typing import List
 from fastapi import WebSocket
 from src.api.models.gesture import GestureEvent
+
 
 class ConnectionManager:
     def __init__(self):
@@ -15,5 +17,12 @@ class ConnectionManager:
             self.active_connections.remove(websocket)
 
     async def broadcast(self, message: GestureEvent):
+        """Broadcast a Pydantic GestureEvent to all connected clients."""
         for connection in self.active_connections:
             await connection.send_text(message.model_dump_json())
+
+    async def broadcast_json(self, payload: dict):
+        """Broadcast an arbitrary JSON-serialisable dict to all connected clients."""
+        text = json.dumps(payload)
+        for connection in self.active_connections:
+            await connection.send_text(text)

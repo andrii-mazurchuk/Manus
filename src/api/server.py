@@ -7,6 +7,7 @@ from src.api.connection_manager import ConnectionManager
 from src.core.gesture_event import GestureToken
 from src.core.event_bus import EventBus
 from src.api.routes import dataset, training, config as config_router, sequences
+from pydantic import BaseModel
 
 app = FastAPI(title="Manus API")
 
@@ -32,6 +33,22 @@ async def root():
 @app.post("/gesture")
 async def gesture(event: GestureEvent):
     await connection_manager.broadcast(event)
+    return {"status": "ok"}
+
+
+class SequencePayload(BaseModel):
+    type:       str
+    name:       str
+    tokens:     list[str]
+    confidence: float
+    timestamp:  float
+    duration:   float
+
+
+@app.post("/sequence")
+async def sequence(event: SequencePayload):
+    """Receives a SequenceEvent from WebSocketAdapter and broadcasts to WS clients."""
+    await connection_manager.broadcast_json(event.model_dump())
     return {"status": "ok"}
 
 
