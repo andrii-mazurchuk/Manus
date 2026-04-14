@@ -1,5 +1,9 @@
 {
-  "pc_adapter": 0.70,
-  "websocket_adapter": 0.70,
-  "sequence_model": null
+  "pc_adapter": 0.7,
+  "websocket_adapter": 0.7,
+  "sequence_model": {
+    "default_max_gap_ms": 900,
+    "default_max_total_ms": 3000,
+    "buffer_size": 10
+  }
 }

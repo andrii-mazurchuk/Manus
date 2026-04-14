@@ -7,7 +7,9 @@
     "CONFIRM": "next_slide",
     "CANCEL": "prev_slide",
     "MODE": "none",
-    "CUSTOM": "none"
+    "CUSTOM": "none",
+    "SNAP": "none",
+    "CLAP": "none"
   },
   "sequence_actions": {}
 }
