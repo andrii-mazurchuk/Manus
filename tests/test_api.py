@@ -236,7 +236,7 @@ class TestGetTokens:
         data = client.get("/tokens").json()
         assert "tokens" in data
 
-    def test_all_eight_tokens_present(self, client: TestClient):
+    def test_all_tokens_present(self, client: TestClient):
         tokens = client.get("/tokens").json()["tokens"]
         expected = {t.value for t in GestureToken}
         assert set(tokens) == expected
@@ -289,13 +289,13 @@ class TestTrainingAPI:
         import src.api.routes.training as t
         # Ensure clean state (other tests may have run first)
         with t._lock:
-            t._state.update(status="idle", progress="", result=None, last_trained=None, error=None)
+            t._states["single"].update(status="idle", progress="", result=None, last_trained=None, error=None)
         assert client.get("/api/train/status").json()["status"] == "idle"
 
     def test_status_result_is_null_when_idle(self, client: TestClient):
         import src.api.routes.training as t
         with t._lock:
-            t._state.update(status="idle", result=None)
+            t._states["single"].update(status="idle", result=None)
         data = client.get("/api/train/status").json()
         assert data["result"] is None
 
@@ -317,8 +317,8 @@ class TestTrainingAPI:
     def test_start_missing_csv_returns_400(self, client: TestClient, tmp_path, monkeypatch):
         """POST /start returns 400 when no CSV exists."""
         import src.api.routes.training as t
-        monkeypatch.setattr(t, "_CSV_PATH", tmp_path / "nonexistent.csv")
-        r = client.post("/api/train/start")
+        monkeypatch.setattr(t, "DEFAULT_CSV", tmp_path / "nonexistent.csv")
+        r = client.post("/api/train/start", json={})
         assert r.status_code == 400
         assert "detail" in r.json()
 
@@ -327,9 +327,9 @@ class TestTrainingAPI:
     ):
         """POST /start returns already_running without spawning a thread."""
         import src.api.routes.training as t
-        monkeypatch.setitem(t._state, "status", "running")
-        r = client.post("/api/train/start")
+        monkeypatch.setitem(t._states["single"], "status", "running")
+        r = client.post("/api/train/start", json={})
         assert r.status_code == 200
         assert r.json()["status"] == "already_running"
         # Restore
-        monkeypatch.setitem(t._state, "status", "idle")
+        monkeypatch.setitem(t._states["single"], "status", "idle")
