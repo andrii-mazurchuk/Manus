@@ -229,8 +229,8 @@
               <div class="card-title">Live Preview</div>
               <div class="preview-wrap">
                 <img id="preview-img" alt="Camera preview">
-                <div class="row">
-                  <button class="btn" id="preview-btn" onclick="togglePreview()">▶ Start Preview</button>
+                <div id="preview-hint" style="font-size:.75rem;color:var(--muted);text-align:center">
+                  Select a label below to activate preview
                 </div>
               </div>
             </div>
@@ -238,17 +238,35 @@
             <!-- Capture -->
             <div class="card full-width">
               <div class="card-title">Capture Samples</div>
-              <div class="row">
+              <div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+                <label style="font-size:.82rem;color:var(--muted)">Hand mode</label>
+                <select id="capture-mode" onchange="onCaptureModeChange()">
+                  <option value="single">Single hand</option>
+                  <option value="two_hand">Two hands</option>
+                </select>
+                <label style="font-size:.82rem;color:var(--muted)">Capture type</label>
+                <select id="capture-type" onchange="onCaptureTypeChange()">
+                  <option value="snapshot">Snapshot + augment</option>
+                  <option value="sequence">Sequence (record)</option>
+                </select>
                 <label style="font-size:.82rem;color:var(--muted)">Label</label>
-                <select id="capture-label">
+                <select id="capture-label" onchange="onCaptureLabelChange()">
                   <option value="">Loading…</option>
                 </select>
-                <label style="font-size:.82rem;color:var(--muted)">Count</label>
-                <input type="number" id="capture-count" value="20" min="1" max="500">
-                <button class="btn btn-primary" id="capture-btn" onclick="startCapture()">▶ Capture</button>
+                <span id="samples-wrap" style="display:flex;align-items:center;gap:6px;">
+                  <label style="font-size:.82rem;color:var(--muted)">Samples</label>
+                  <input type="number" id="samples-per-trigger" value="50" min="1" max="500">
+                </span>
+                <button class="btn btn-primary" id="trigger-btn" onclick="fireTrigger()">● Trigger</button>
               </div>
               <div class="capture-status" id="capture-status">
-                Stop the preview, position your hand, then click Capture.
+                Select a label to activate the session.
+              </div>
+              <div id="two-hand-hint" style="display:none;margin-top:6px;font-size:.8rem;color:var(--muted);">
+                ✋✋ Two-hand mode: keep <strong>both hands</strong> visible. Primary = right hand.
+              </div>
+              <div style="margin-top:6px;font-size:.75rem;color:var(--muted)">
+                Press <kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:.75rem">Space</kbd> to trigger
               </div>
             </div>
 
@@ -285,6 +303,13 @@
             <!-- Train trigger + live status -->
             <div class="card">
               <div class="card-title">Train Model</div>
+              <div class="row" style="margin-bottom:10px;">
+                <label style="font-size:.82rem;color:var(--muted)">Model type</label>
+                <select id="train-model-type" onchange="onTrainModelTypeChange()">
+                  <option value="single">Single hand</option>
+                  <option value="two_hand">Two hands</option>
+                </select>
+              </div>
               <div class="row" style="margin-bottom:14px;">
                 <button class="btn btn-primary" id="train-btn" onclick="startTraining()">⚙ Train Model</button>
                 <span id="train-status-badge" style="font-size:.8rem;font-weight:700;color:var(--muted)">Idle</span>
@@ -385,18 +410,103 @@
 
     <!-- ── Sequences panel ── -->
     <div class="tab-panel" id="panel-sequences">
-      <div class="coming-soon-block">
-        <span class="cs-label">Coming soon</span>
-        <h3>Gesture Sequence Recognition</h3>
-        <p>
-          Sequences are <strong>temporal patterns of existing static gesture tokens</strong> —
-          for example, UP → DOWN → UP → DOWN = "wave". The recogniser watches the EventBus
-          output stream and fires when a matching pattern is detected.
-        </p>
-        <p style="margin-top:4px;">
-          This tab will have its own Dataset, Train, and Config sub-panels once the
-          sequence pipeline is implemented.
-        </p>
+      <div class="dataset-grid" style="margin-top:4px;">
+
+        <!-- Defined sequences list -->
+        <div class="card full-width">
+          <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+            Defined Sequences
+            <button class="btn btn-primary" style="font-size:.78rem;padding:4px 10px;"
+                    onclick="showCreateSequence()">+ New Sequence</button>
+          </div>
+          <div id="sequences-list">
+            <span style="color:var(--muted);font-size:.85rem">Loading…</span>
+          </div>
+        </div>
+
+        <!-- Create / edit form (hidden by default) -->
+        <div class="card full-width" id="seq-form-card" style="display:none;">
+          <div class="card-title" id="seq-form-title">New Sequence</div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px;">
+            <div class="row">
+              <label style="font-size:.82rem;color:var(--muted);min-width:80px">Name</label>
+              <input type="text" id="seq-name" placeholder="e.g. double_clap"
+                     style="flex:1;background:var(--surface2);border:1px solid var(--border);
+                            color:var(--text);padding:5px 8px;border-radius:4px;font-size:.85rem;">
+              <span style="font-size:.75rem;color:var(--muted)">lowercase, underscores only</span>
+            </div>
+            <div>
+              <label style="font-size:.82rem;color:var(--muted);display:block;margin-bottom:6px;">
+                Pattern (click to add tokens, drag to reorder)
+              </label>
+              <div id="seq-pattern-tokens"
+                   style="display:flex;flex-wrap:wrap;gap:6px;min-height:36px;padding:6px;
+                          background:var(--surface2);border:1px solid var(--border);border-radius:4px;">
+              </div>
+              <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;" id="seq-token-picker">
+                <!-- populated from /tokens -->
+              </div>
+            </div>
+            <div class="row">
+              <label style="font-size:.82rem;color:var(--muted);min-width:80px">Max gap</label>
+              <input type="number" id="seq-max-gap" placeholder="default" min="100" max="10000"
+                     style="width:90px;background:var(--surface2);border:1px solid var(--border);
+                            color:var(--text);padding:5px 8px;border-radius:4px;font-size:.85rem;">
+              <span style="font-size:.75rem;color:var(--muted)">ms between tokens (blank = use default)</span>
+            </div>
+            <div class="row">
+              <label style="font-size:.82rem;color:var(--muted);min-width:80px">Max total</label>
+              <input type="number" id="seq-max-total" placeholder="default" min="200" max="30000"
+                     style="width:90px;background:var(--surface2);border:1px solid var(--border);
+                            color:var(--text);padding:5px 8px;border-radius:4px;font-size:.85rem;">
+              <span style="font-size:.75rem;color:var(--muted)">ms total window (blank = use default)</span>
+            </div>
+            <div class="row">
+              <button class="btn btn-primary" onclick="saveSequence()">Save</button>
+              <button class="btn" onclick="hideCreateSequence()">Cancel</button>
+              <span id="seq-form-status" style="font-size:.8rem;color:var(--muted)"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Global timing config -->
+        <div class="card">
+          <div class="card-title">Timing Defaults</div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px;">
+            <div class="row">
+              <label style="font-size:.82rem;color:var(--muted);min-width:120px">Max gap (ms)</label>
+              <input type="number" id="timing-gap" value="800" min="100" max="10000"
+                     style="width:80px;background:var(--surface2);border:1px solid var(--border);
+                            color:var(--text);padding:5px 8px;border-radius:4px;font-size:.85rem;">
+            </div>
+            <div class="row">
+              <label style="font-size:.82rem;color:var(--muted);min-width:120px">Max total (ms)</label>
+              <input type="number" id="timing-total" value="3000" min="200" max="30000"
+                     style="width:80px;background:var(--surface2);border:1px solid var(--border);
+                            color:var(--text);padding:5px 8px;border-radius:4px;font-size:.85rem;">
+            </div>
+            <div class="row">
+              <label style="font-size:.82rem;color:var(--muted);min-width:120px">Buffer size</label>
+              <input type="number" id="timing-buffer" value="10" min="2" max="50"
+                     style="width:80px;background:var(--surface2);border:1px solid var(--border);
+                            color:var(--text);padding:5px 8px;border-radius:4px;font-size:.85rem;">
+            </div>
+            <div class="row">
+              <button class="btn btn-primary" onclick="saveTiming()">Save Timing</button>
+              <span id="timing-status" style="font-size:.8rem;color:var(--muted)"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live sequence event feed -->
+        <div class="card">
+          <div class="card-title">Live Sequence Events</div>
+          <div id="seq-event-log"
+               style="font-size:.82rem;color:var(--muted);max-height:200px;overflow-y:auto;">
+            <span>Waiting for events…</span>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -409,8 +519,10 @@
 const BASE = "";  // same origin
 
 // ── State ─────────────────────────────────────────────────────────────────
-let previewActive = false;
-let capturing     = false;
+let _sessionActive      = false;
+let _statusPollInterval = null;
+let _lastDoneResult     = null;   // avoids re-showing the same "done" result
+let _recording          = false;  // local mirror of sequence recording state
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 initTabs(".tab-bar", ".tab-panel");
@@ -420,6 +532,23 @@ loadStats();
 loadTrainStatus();
 loadTrainHistory();
 loadConfig();
+loadSequences();
+initSeqEventFeed();
+startStatusPoller();
+
+// Spacebar → trigger (only when Dataset sub-panel is visible)
+document.addEventListener("keydown", e => {
+  if (e.code !== "Space") return;
+  const datasetPanel = document.getElementById("panel-dataset");
+  if (!datasetPanel || !datasetPanel.classList.contains("active")) return;
+  e.preventDefault();
+  fireTrigger();
+});
+
+// Stop session when tab/window closes
+window.addEventListener("beforeunload", () => {
+  navigator.sendBeacon("/api/dataset/session/stop");
+});
 
 // ── Camera ────────────────────────────────────────────────────────────────
 async function loadCameras() {
@@ -434,8 +563,7 @@ async function loadCameras() {
     sel.innerHTML = data.cameras
       .map(c => `<option value="${c.index}">${c.label}</option>`)
       .join("");
-    // If preview was active, refresh its src
-    if (previewActive) startPreview();
+    syncSession();
   } catch {
     sel.innerHTML = '<option value="">Error detecting cameras</option>';
   }
@@ -445,27 +573,132 @@ function selectedCamera() {
   return parseInt(document.getElementById("camera-select").value ?? "0", 10);
 }
 
-// ── Preview ───────────────────────────────────────────────────────────────
-function startPreview() {
-  const img = document.getElementById("preview-img");
-  const btn = document.getElementById("preview-btn");
-  img.src = `/api/dataset/capture/stream?camera=${selectedCamera()}&_t=${Date.now()}`;
-  img.classList.add("active");
-  btn.textContent = "■ Stop Preview";
-  previewActive = true;
+// ── Session management ────────────────────────────────────────────────────
+async function syncSession() {
+  const label      = document.getElementById("capture-label").value;
+  const mode       = document.getElementById("capture-mode").value;
+  const captureType = document.getElementById("capture-type").value;
+  const spt        = parseInt(document.getElementById("samples-per-trigger").value || "50", 10);
+
+  if (!label) {
+    // No label selected — stop any running session and show placeholder
+    if (_sessionActive) {
+      apiFetch("/api/dataset/session/stop", { method: "POST" }).catch(() => {});
+      _sessionActive = false;
+    }
+    const img = document.getElementById("preview-img");
+    img.src = "";
+    img.classList.remove("active");
+    document.getElementById("preview-hint").style.display = "";
+    setStatus("Select a label to activate the session.", "");
+    return;
+  }
+
+  try {
+    await apiFetch("/api/dataset/session/start", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        camera: selectedCamera(), label, capture_type: captureType,
+        mode, samples_per_trigger: spt,
+      }),
+    });
+    _sessionActive = true;
+    _lastDoneResult = null;
+    _recording = false;
+    document.getElementById("trigger-btn").textContent = "● Trigger";
+
+    // Point preview at the always-on annotated stream
+    const img = document.getElementById("preview-img");
+    img.src = `/api/dataset/capture/stream?_t=${Date.now()}`;
+    img.classList.add("active");
+    document.getElementById("preview-hint").style.display = "none";
+
+    const ct = captureType === "snapshot"
+      ? `Snapshot mode — ${spt} augmented samples per trigger.`
+      : "Sequence mode — trigger to start/stop recording.";
+    setStatus(ct, "");
+  } catch (err) {
+    setStatus(`Session error: ${err.message}`, "error");
+  }
 }
 
-function stopPreview() {
-  const img = document.getElementById("preview-img");
-  const btn = document.getElementById("preview-btn");
-  img.src = "";
-  img.classList.remove("active");
-  btn.textContent = "▶ Start Preview";
-  previewActive = false;
+async function fireTrigger() {
+  if (!_sessionActive) {
+    setStatus("No active session — select a label first.", "error");
+    return;
+  }
+  try {
+    const data = await apiFetch("/api/dataset/session/trigger", { method: "POST" });
+    const action = data.action;
+    if (action === "triggered") {
+      setStatus("Snapshot triggered…", "busy");
+    } else if (action === "recording_started") {
+      _recording = true;
+      document.getElementById("trigger-btn").textContent = "■ Stop Recording";
+      setStatus("Recording… trigger again to stop.", "busy");
+    } else if (action === "recording_stopped") {
+      _recording = false;
+      document.getElementById("trigger-btn").textContent = "● Trigger";
+      setStatus("Saving sequence…", "busy");
+    } else if (action === "busy") {
+      setStatus("Save in progress — wait a moment.", "busy");
+    } else if (action === "no_session") {
+      setStatus("No active session — select a label first.", "error");
+    }
+  } catch (err) {
+    setStatus(`Trigger failed: ${err.message}`, "error");
+  }
 }
 
-function togglePreview() {
-  previewActive ? stopPreview() : startPreview();
+// ── Status poller ─────────────────────────────────────────────────────────
+function startStatusPoller() {
+  if (_statusPollInterval) return;
+  _statusPollInterval = setInterval(async () => {
+    if (!_sessionActive) return;
+    try {
+      const status = await apiFetch("/api/dataset/session/status");
+      handleSessionStatus(status);
+    } catch { /* server not reachable */ }
+  }, 600);
+}
+
+function handleSessionStatus(status) {
+  if (status.state === "done" && status.result) {
+    // Avoid reacting to the same result twice
+    const key = JSON.stringify(status.result);
+    if (key === _lastDoneResult) return;
+    _lastDoneResult = key;
+
+    const r = status.result;
+    if (r.error) {
+      setStatus(`Error: ${r.error}`, "error");
+    } else {
+      setStatus(
+        `✓ Saved ${r.generated} samples for ${status.label}. Total: ${r.total_for_label}`,
+        "ok"
+      );
+      loadStats();
+    }
+
+    // Reset trigger button and recording state
+    _recording = false;
+    document.getElementById("trigger-btn").textContent = "● Trigger";
+
+    // Acknowledge done so backend resets to ready (cheap label ping)
+    apiFetch("/api/dataset/session/label", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ label: status.label }),
+    }).catch(() => {});
+  }
+
+  // Keep recording indicator in sync
+  if (status.recording !== _recording) {
+    _recording = status.recording;
+    document.getElementById("trigger-btn").textContent =
+      _recording ? "■ Stop Recording" : "● Trigger";
+  }
 }
 
 // ── Tokens → label dropdowns ──────────────────────────────────────────────
@@ -475,6 +708,9 @@ async function loadTokens() {
     const tokens = data.tokens ?? [];
     populateSelect("capture-label", tokens);
     populateSelect("clear-label", ["", ...tokens], ["Select label…", ...tokens]);
+    buildTokenPicker(tokens);
+    // Auto-start session with the first token now that a label is available
+    syncSession();
   } catch {
     /* server not reachable — leave as-is */
   }
@@ -504,56 +740,81 @@ function renderStats(data) {
   document.getElementById("total-count").textContent = total;
 
   const labels = Object.entries(data.labels ?? {}).sort((a, b) => b[1] - a[1]);
-  if (!labels.length) {
+  const twoHandLabels = Object.entries(data.two_hand_labels ?? {}).sort((a, b) => b[1] - a[1]);
+
+  let html = "";
+
+  if (!labels.length && !twoHandLabels.length) {
     list.innerHTML = '<span style="color:var(--muted);font-size:.85rem">No training data yet. Use Capture or Upload to add samples.</span>';
     return;
   }
 
-  const max = Math.max(...labels.map(([, n]) => n), 1);
-  list.innerHTML = labels.map(([lbl, count]) => `
-    <div class="stat-row">
-      <span class="stat-label">${lbl}</span>
-      <div class="stat-bar-track">
-        <div class="stat-bar-fill" style="width:${(count / max * 100).toFixed(1)}%"></div>
-      </div>
-      <span class="stat-count">${count}</span>
-    </div>`).join("");
-}
-
-// ── Capture ───────────────────────────────────────────────────────────────
-async function startCapture() {
-  if (capturing) return;
-  const label = document.getElementById("capture-label").value;
-  const count = parseInt(document.getElementById("capture-count").value, 10);
-  if (!label) { setStatus("Select a label first.", "error"); return; }
-  if (!count || count < 1) { setStatus("Count must be at least 1.", "error"); return; }
-
-  // Stop preview so the camera is free
-  if (previewActive) {
-    stopPreview();
-    await sleep(500);  // give camera time to release
+  if (labels.length) {
+    const max = Math.max(...labels.map(([, n]) => n), 1);
+    html += `<div style="font-size:.75rem;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">Single hand</div>`;
+    html += labels.map(([lbl, count]) => `
+      <div class="stat-row">
+        <span class="stat-label">${lbl}</span>
+        <div class="stat-bar-track">
+          <div class="stat-bar-fill" style="width:${(count / max * 100).toFixed(1)}%"></div>
+        </div>
+        <span class="stat-count">${count}</span>
+      </div>`).join("");
   }
 
-  capturing = true;
-  document.getElementById("capture-btn").disabled = true;
-  setStatus(`Capturing ${count} samples of ${label}…`, "busy");
+  if (twoHandLabels.length) {
+    const max2 = Math.max(...twoHandLabels.map(([, n]) => n), 1);
+    html += `<div style="font-size:.75rem;font-weight:700;color:var(--muted);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.05em;">Two hands (${data.two_hand_total ?? 0} total)</div>`;
+    html += twoHandLabels.map(([lbl, count]) => `
+      <div class="stat-row">
+        <span class="stat-label">${lbl}</span>
+        <div class="stat-bar-track">
+          <div class="stat-bar-fill" style="width:${(count / max2 * 100).toFixed(1)}%;background:var(--accent2)"></div>
+        </div>
+        <span class="stat-count">${count}</span>
+      </div>`).join("");
+  }
 
-  try {
-    const data = await apiFetch("/api/dataset/capture", {
-      method: "POST",
+  list.innerHTML = html;
+}
+
+// ── Capture controls ──────────────────────────────────────────────────────
+function onCaptureModeChange() {
+  document.getElementById("two-hand-hint").style.display =
+    document.getElementById("capture-mode").value === "two_hand" ? "block" : "none";
+  syncSession();   // restart session with new hand mode
+}
+
+function onCaptureTypeChange() {
+  const isSnapshot = document.getElementById("capture-type").value === "snapshot";
+  document.getElementById("samples-wrap").style.display = isSnapshot ? "" : "none";
+  syncSession();   // restart session with new capture type
+}
+
+function onCaptureLabelChange() {
+  if (_sessionActive) {
+    // Hot-swap label — no camera restart needed
+    const label = document.getElementById("capture-label").value;
+    if (!label) return;
+    apiFetch("/api/dataset/session/label", {
+      method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ camera: selectedCamera(), label, count }),
-    });
-    setStatus(
-      `✓ Captured ${data.captured} samples (${data.skipped} skipped). Total for ${label}: ${data.total_for_label}`,
-      "ok"
-    );
-    await loadStats();
-  } catch (err) {
-    setStatus(`Capture failed: ${err.message}`, "error");
-  } finally {
-    capturing = false;
-    document.getElementById("capture-btn").disabled = false;
+      body:    JSON.stringify({ label }),
+    })
+      .then(() => {
+        _lastDoneResult = null;
+        const ct = document.getElementById("capture-type").value;
+        const spt = document.getElementById("samples-per-trigger").value;
+        setStatus(
+          ct === "snapshot"
+            ? `Snapshot mode — ${spt} augmented samples per trigger.`
+            : "Sequence mode — trigger to start/stop recording.",
+          ""
+        );
+      })
+      .catch(() => syncSession());
+  } else {
+    syncSession();
   }
 }
 
@@ -615,9 +876,20 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // ── Training ──────────────────────────────────────────────────────────────
 let trainPollTimer = null;
 
+function selectedTrainModelType() {
+  return document.getElementById("train-model-type")?.value ?? "single";
+}
+
+function onTrainModelTypeChange() {
+  if (trainPollTimer) { clearInterval(trainPollTimer); trainPollTimer = null; }
+  loadTrainStatus();
+  loadTrainHistory();
+}
+
 async function loadTrainStatus() {
+  const modelType = selectedTrainModelType();
   try {
-    const data = await apiFetch("/api/train/status");
+    const data = await apiFetch(`/api/train/status?model_type=${modelType}`);
     renderTrainStatus(data);
     if (data.status === "running") {
       if (!trainPollTimer) trainPollTimer = setInterval(loadTrainStatus, 1000);
@@ -636,10 +908,15 @@ async function loadTrainHistory() {
 
 async function startTraining() {
   const btn = document.getElementById("train-btn");
+  const modelType = selectedTrainModelType();
   btn.disabled = true;
   setTrainProgress("", "");
   try {
-    const data = await apiFetch("/api/train/start", { method: "POST" });
+    const data = await apiFetch("/api/train/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model_type: modelType }),
+    });
     if (data.status !== "already_running") {
       if (!trainPollTimer) trainPollTimer = setInterval(loadTrainStatus, 1000);
     }
@@ -805,6 +1082,202 @@ async function saveThresholds() {
     statusEl.style.color = "var(--red)";
   }
   setTimeout(() => { statusEl.textContent = ""; }, 3000);
+}
+
+// ── Sequences ─────────────────────────────────────────────────────────────
+let _seqPatternTokens = [];  // current pattern being built in the form
+let _seqEditingName   = null; // null = create, string = update
+
+async function loadSequences() {
+  try {
+    const [listData, timingData] = await Promise.all([
+      apiFetch("/api/sequences/list"),
+      apiFetch("/api/sequences/timing"),
+    ]);
+    renderSequenceList(listData.sequences ?? []);
+    document.getElementById("timing-gap").value    = timingData.default_max_gap_ms   ?? 800;
+    document.getElementById("timing-total").value  = timingData.default_max_total_ms ?? 3000;
+    document.getElementById("timing-buffer").value = timingData.buffer_size          ?? 10;
+  } catch {
+    document.getElementById("sequences-list").innerHTML =
+      '<span style="color:var(--muted);font-size:.85rem">Could not load sequences — is the server running?</span>';
+  }
+}
+
+function renderSequenceList(sequences) {
+  const el = document.getElementById("sequences-list");
+  if (!sequences.length) {
+    el.innerHTML = '<span style="color:var(--muted);font-size:.85rem">No sequences defined yet. Click + New Sequence to add one.</span>';
+    return;
+  }
+  el.innerHTML = sequences.map(s => `
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:8px 0;border-bottom:1px solid var(--border);">
+      <div>
+        <span style="font-weight:700;color:var(--accent);font-size:.88rem;">${s.name}</span>
+        <span style="margin-left:10px;font-size:.8rem;color:var(--muted);">
+          ${s.pattern.map(t => `<span style="background:var(--surface2);padding:2px 6px;
+            border-radius:3px;margin-right:3px;">${t}</span>`).join("→")}
+        </span>
+        ${s.max_gap_ms != null ? `<span style="font-size:.75rem;color:var(--muted);margin-left:8px;">gap ${s.max_gap_ms}ms</span>` : ""}
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn" style="font-size:.75rem;padding:3px 8px;"
+                onclick="editSequence(${JSON.stringify(s)})">Edit</button>
+        <button class="btn" style="font-size:.75rem;padding:3px 8px;color:var(--red);border-color:rgba(239,68,68,.4)"
+                onclick="deleteSequence('${s.name}')">Delete</button>
+      </div>
+    </div>`).join("");
+}
+
+function showCreateSequence() {
+  _seqEditingName = null;
+  _seqPatternTokens = [];
+  document.getElementById("seq-name").value       = "";
+  document.getElementById("seq-max-gap").value    = "";
+  document.getElementById("seq-max-total").value  = "";
+  document.getElementById("seq-form-title").textContent = "New Sequence";
+  document.getElementById("seq-form-status").textContent = "";
+  renderPatternTokens();
+  document.getElementById("seq-form-card").style.display = "";
+  document.getElementById("seq-name").focus();
+}
+
+function hideCreateSequence() {
+  document.getElementById("seq-form-card").style.display = "none";
+}
+
+function editSequence(s) {
+  _seqEditingName   = s.name;
+  _seqPatternTokens = [...s.pattern];
+  document.getElementById("seq-name").value       = s.name;
+  document.getElementById("seq-max-gap").value    = s.max_gap_ms   ?? "";
+  document.getElementById("seq-max-total").value  = s.max_total_ms ?? "";
+  document.getElementById("seq-form-title").textContent = "Edit Sequence";
+  document.getElementById("seq-form-status").textContent = "";
+  renderPatternTokens();
+  document.getElementById("seq-form-card").style.display = "";
+}
+
+function renderPatternTokens() {
+  const container = document.getElementById("seq-pattern-tokens");
+  container.innerHTML = _seqPatternTokens.map((t, i) => `
+    <span style="background:var(--accent);color:#fff;padding:3px 8px;border-radius:4px;
+                 font-size:.8rem;cursor:pointer;" title="Click to remove"
+          onclick="removePatternToken(${i})">${t} ✕</span>`).join("");
+}
+
+function addPatternToken(token) {
+  _seqPatternTokens.push(token);
+  renderPatternTokens();
+}
+
+function removePatternToken(index) {
+  _seqPatternTokens.splice(index, 1);
+  renderPatternTokens();
+}
+
+async function saveSequence() {
+  const name      = document.getElementById("seq-name").value.trim();
+  const maxGap    = document.getElementById("seq-max-gap").value;
+  const maxTotal  = document.getElementById("seq-max-total").value;
+  const statusEl  = document.getElementById("seq-form-status");
+
+  if (!name) { statusEl.textContent = "Name is required."; statusEl.style.color = "var(--red)"; return; }
+  if (_seqPatternTokens.length < 2) { statusEl.textContent = "Pattern needs at least 2 tokens."; statusEl.style.color = "var(--red)"; return; }
+
+  const body = {
+    name,
+    pattern:      _seqPatternTokens,
+    action:       "none",
+    max_gap_ms:   maxGap   ? parseInt(maxGap)   : null,
+    max_total_ms: maxTotal  ? parseInt(maxTotal) : null,
+  };
+
+  try {
+    if (_seqEditingName) {
+      await apiFetch(`/api/sequences/${_seqEditingName}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+    } else {
+      await apiFetch("/api/sequences/", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+    }
+    hideCreateSequence();
+    await loadSequences();
+  } catch (err) {
+    statusEl.textContent = "Error: " + err.message;
+    statusEl.style.color = "var(--red)";
+  }
+}
+
+async function deleteSequence(name) {
+  if (!confirm(`Delete sequence "${name}"?`)) return;
+  try {
+    await apiFetch(`/api/sequences/${name}`, { method: "DELETE" });
+    await loadSequences();
+  } catch (err) {
+    alert("Delete failed: " + err.message);
+  }
+}
+
+async function saveTiming() {
+  const statusEl = document.getElementById("timing-status");
+  try {
+    await apiFetch("/api/sequences/timing", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        default_max_gap_ms:   parseInt(document.getElementById("timing-gap").value),
+        default_max_total_ms: parseInt(document.getElementById("timing-total").value),
+        buffer_size:          parseInt(document.getElementById("timing-buffer").value),
+      }),
+    });
+    statusEl.textContent = "✓ Saved";
+    statusEl.style.color = "var(--green)";
+  } catch (err) {
+    statusEl.textContent = "Error: " + err.message;
+    statusEl.style.color = "var(--red)";
+  }
+  setTimeout(() => { statusEl.textContent = ""; }, 3000);
+}
+
+// Populate token picker buttons (called once after tokens are loaded)
+function buildTokenPicker(tokens) {
+  const picker = document.getElementById("seq-token-picker");
+  if (!picker) return;
+  picker.innerHTML = tokens.map(t => `
+    <button class="btn" style="font-size:.75rem;padding:3px 8px;"
+            onclick="addPatternToken('${t}')">${t}</button>`).join("");
+}
+
+// Live sequence event feed via WebSocket
+function initSeqEventFeed() {
+  const log = document.getElementById("seq-event-log");
+  if (!log) return;
+  const ws = new WebSocket(`ws://${location.host}/ws/gestures`);
+  ws.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type !== "sequence") return;
+      const entry = document.createElement("div");
+      entry.style.cssText = "padding:4px 0;border-bottom:1px solid var(--border);";
+      entry.innerHTML = `
+        <span style="color:var(--accent);font-weight:700;">${data.name}</span>
+        <span style="color:var(--muted);font-size:.75rem;margin-left:6px;">
+          [${data.tokens.join(" → ")}]
+          ${(data.confidence * 100).toFixed(0)}%
+          ${data.duration.toFixed(2)}s
+        </span>`;
+      if (log.firstChild && log.firstChild.textContent === "Waiting for events…") {
+        log.innerHTML = "";
+      }
+      log.prepend(entry);
+      // Keep last 20 entries
+      while (log.children.length > 20) log.removeChild(log.lastChild);
+    } catch { /* ignore non-JSON */ }
+  };
 }
 </script>
 </body>
