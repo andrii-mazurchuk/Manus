@@ -40,20 +40,20 @@ JSON representation (as broadcast over WebSocket and accepted by `POST /gesture`
 
 ## Gesture Tokens
 
-These are the current valid values for `GestureEvent.gesture`. The vocabulary is expected to grow beyond these 8 tokens. The canonical source of truth is the `GestureToken` enum in `src/core/gesture_event.py` — always fetch the live list from `GET /api/tokens` rather than hardcoding these values in clients.
+The canonical source of truth is the `GestureToken` enum in `src/core/gesture_event.py`. Always fetch the live list from `GET /tokens` — never hardcode. The vocabulary has grown beyond the original 8.
 
-
-| Token     | Gesture             | Default PC action         |
-| --------- | ------------------- | ------------------------- |
-| `STOP`    | Fist                | Mute / pause              |
-| `PLAY`    | Open palm           | Unmute / resume           |
-| `UP`      | Index pointing up   | Volume up / scroll up     |
-| `DOWN`    | Index pointing down | Volume down / scroll down |
-| `CONFIRM` | Thumbs up           | Next slide / confirm      |
-| `CANCEL`  | Thumbs down         | Previous slide / cancel   |
-| `MODE`    | Peace / V           | Switch adapter mode       |
-| `CUSTOM`  | Shaka               | User-defined              |
-
+| Token     | Hand      | Gesture             | Default action       |
+| --------- | --------- | ------------------- | -------------------- |
+| `STOP`    | Single    | Fist                | Mute / pause         |
+| `PLAY`    | Single    | Open palm           | Unmute / resume      |
+| `UP`      | Single    | Index pointing up   | Volume up            |
+| `DOWN`    | Single    | Index pointing down | Volume down          |
+| `CONFIRM` | Single    | Thumbs up           | Next slide           |
+| `CANCEL`  | Single    | Thumbs down         | Previous slide       |
+| `MODE`    | Single    | Peace / V           | Switch adapter mode  |
+| `CUSTOM`  | Single    | Shaka               | User-defined         |
+| `SNAP`    | Single    | Snap                | None (configurable)  |
+| `CLAP`    | Two-hand  | Clap                | None (configurable)  |
 
 The event bus emits tokens. Adapters decide what tokens mean — never the classifier.
 
@@ -61,23 +61,27 @@ The event bus emits tokens. Adapters decide what tokens mean — never the class
 
 ## BaseAdapter
 
-Every adapter must subclass this. No other interface is required.
+Every adapter must subclass this.
 
 ```python
 from abc import ABC, abstractmethod
-from core.gesture_event import GestureEvent
+from src.core.gesture_event import GestureEvent
+from src.core.sequence_event import SequenceEvent
 
 class BaseAdapter(ABC):
     @abstractmethod
     def on_gesture(self, event: GestureEvent) -> None:
         """Called by the event bus for every emitted GestureEvent."""
         ...
+
+    def on_sequence(self, event: SequenceEvent) -> None:
+        """Called by the event bus for every emitted SequenceEvent. Default: no-op."""
+        pass
 ```
 
 Adapters are responsible for their own confidence threshold and debounce logic. The event bus passes every event through unfiltered.
 
 **Recommended defaults (implement in your adapter):**
-
 - Ignore events where `confidence < 0.70`
 - Debounce: ignore the same `label` if it fired within the last 500ms
 
@@ -102,6 +106,16 @@ Header row must be present:
 ```
 label,x0,y0,x1,y1,...,x20,y20
 ```
+
+### Two-hand training data (`src/data/gestures_two_hand.csv`)
+
+85 columns: `label` + 84 floats. Primary hand (suffix `_p`) first, secondary hand (suffix `_s`) second. Both hands are normalized in the primary-wrist reference frame.
+
+```
+label,x0_p,y0_p,...,x20_p,y20_p,x0_s,y0_s,...,x20_s,y20_s
+```
+
+When secondary hand is absent (single-hand gesture trained in two-hand model), the `_s` columns are all zeros (zero-masking). The model learns that a zero block means "no second hand".
 
 ---
 
@@ -171,23 +185,55 @@ Response: `{ "status": "ok" }`
 ```
 This is the single source of truth for token names. Clients must use this endpoint rather than hardcoding the list — the vocabulary will grow.
 
-### REST (Studio endpoints — Phase 4)
+### REST (Studio endpoints — Phases 4–5)
+
+**Dataset / Camera Session**
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/cameras` | List available camera indices |
-| `GET /api/dataset/stats` | Sample counts per label |
-| `POST /api/dataset/capture` | Trigger server-side live capture |
-| `GET /api/dataset/capture/stream?camera=N` | MJPEG camera preview |
+| `GET /api/dataset/cameras` | List available camera indices |
+| `GET /api/dataset/stats` | Sample counts per label (single + two-hand) |
+| `GET /api/dataset/capture/stream` | Always-on annotated MJPEG stream (reads from CameraSession buffer) |
+| `POST /api/dataset/session/start` | Start/restart CameraSession `{camera, label, capture_type, mode, samples_per_trigger}` |
+| `POST /api/dataset/session/stop` | Stop session, release camera |
+| `POST /api/dataset/session/trigger` | Fire capture trigger (non-blocking) → `{action}` |
+| `GET /api/dataset/session/status` | `{active, state, result, label, capture_type, mode, recording}` |
+| `POST /api/dataset/session/label` | Hot-swap label without camera restart |
 | `POST /api/dataset/upload` | Upload zip for bulk landmark extraction |
-| `DELETE /api/dataset/{label}` | Remove all samples for a label |
-| `POST /api/train/start` | Trigger background model training |
-| `GET /api/train/status` | Poll training progress and results |
+| `DELETE /api/dataset/{label}?mode=single\|two_hand` | Remove all samples for a label |
+
+> **Removed in Phase 5d:** `POST /api/dataset/capture` and `GET /api/dataset/capture/annotated_stream`. Use the session endpoints instead.
+
+**Training**
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/train/start` | `{model_type: "single"\|"two_hand"}` — trigger background training |
+| `GET /api/train/status?model_type=single\|two_hand` | Poll training progress and results |
+| `GET /api/train/history` | Last 5 runs per model type |
+
+**Config**
+
+| Endpoint | Purpose |
+|---|---|
 | `GET /api/config/actions` | Get gesture→action mapping |
 | `PUT /api/config/actions` | Update gesture→action mapping |
 | `GET /api/config/thresholds` | Get per-adapter thresholds |
 | `PUT /api/config/thresholds` | Update per-adapter thresholds |
-| `GET /api/sequences/status` | Sequence recognition availability (placeholder) |
+
+**Sequences**
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/sequences/status` | `{available: true, sequence_count, timing}` |
+| `GET /api/sequences/list` | All defined sequences |
+| `POST /api/sequences/` | Create sequence |
+| `GET /api/sequences/timing` | Global timing defaults |
+| `PUT /api/sequences/timing` | Update timing defaults |
+| `PUT /api/sequences/{name}` | Update sequence definition |
+| `DELETE /api/sequences/{name}` | Delete sequence |
+
+> **Route ordering gotcha:** In `sequences.py`, the `GET /timing` and `PUT /timing` routes must be defined **before** the parameterized `/{name}` routes. FastAPI matches top-to-bottom; if `/{name}` comes first it will shadow the literal path `/timing`.
 
 ### WebSocket
 
@@ -201,15 +247,37 @@ The server pushes a `GestureEvent` JSON message to all connected clients every t
 
 ---
 
-## Gesture Sequence Events (planned — not yet implemented)
+## SequenceEvent
 
-Gesture sequences are **temporal patterns of existing static tokens** observed over a time window. They are not a new vocabulary: the sequence recogniser watches the EventBus output stream and fires a secondary event when it detects a matching pattern (e.g. UP → DOWN → UP → DOWN = "wave").
+Emitted by `SequenceRecogniser` when a token pattern is matched. Flows through the same EventBus as `GestureEvent` via `emit_sequence()` / `on_sequence()`.
 
-**Design constraints locked in:**
-- Sequences share the existing adapter layer — a `SequenceEvent` (TBD) will be emitted on the same EventBus.
-- Sequence actions live in `src/config/gesture_actions.json` under the `sequence_actions` key (separate from `static_actions`).
-- The Studio page Sequences tab is already structured to hold dataset/train/config sub-panels for sequences once the feature is implemented.
-- Threshold for the sequence model is reserved as `sequence_model` in `src/config/thresholds.json`.
+```python
+@dataclass
+class SequenceEvent:
+    name:       str                # sequence definition name, e.g. "double_stop"
+    tokens:     list[GestureToken] # the matched token pattern
+    confidence: float              # mean confidence of matched GestureEvents
+    timestamp:  float              # time.time() of final matching token
+    duration:   float = 0.0        # seconds from first to last token
+
+    def to_dict(self) -> dict: ... # includes "type": "sequence"
+```
+
+JSON over WebSocket:
+```json
+{
+  "type":       "sequence",
+  "name":       "double_stop",
+  "tokens":     ["STOP", "STOP", "STOP"],
+  "confidence": 0.91,
+  "timestamp":  1714123456.789,
+  "duration":   1.2
+}
+```
+
+Sequence definitions live in `src/config/sequences.json`. Global timing defaults live in `src/config/thresholds.json` under `sequence_model`. Both are editable live via the Studio Sequences tab or the `/api/sequences/` CRUD endpoints.
+
+**Deduplication note:** The `SequenceRecogniser` collapses consecutive identical tokens that arrive within `max_gap_ms` into one entry (keeping the highest-confidence event). This prevents the 30fps event stream from saturating the buffer with repeated tokens, which would mask deliberate double/triple gestures.
 
 ---
 
@@ -217,47 +285,61 @@ Gesture sequences are **temporal patterns of existing static tokens** observed o
 
 ```
 repo/
-├── main.py                          # pipeline entrypoint — registers all adapters
+├── main.py                            # pipeline entrypoint — registers all adapters
 ├── src/
 │   ├── core/
-│   │   ├── gesture_event.py         # GestureEvent dataclass + GestureToken enum
-│   │   ├── base_adapter.py          # BaseAdapter ABC (canonical location)
-│   │   ├── event_bus.py             # thread-safe singleton pub/sub
-│   │   ├── classifier.py            # GestureClassifier (loads classifier.pkl)
-│   │   └── normalizer.py            # normalize_landmarks(), HAND_CONNECTIONS
+│   │   ├── gesture_event.py           # GestureEvent + GestureToken (10 tokens)
+│   │   ├── sequence_event.py          # SequenceEvent dataclass
+│   │   ├── base_adapter.py            # on_gesture() [abstract] + on_sequence() [no-op]
+│   │   ├── event_bus.py               # emit() + emit_sequence()
+│   │   ├── classifier.py              # single-hand 42-float classifier
+│   │   ├── two_hand_classifier.py     # two-hand 84-float classifier
+│   │   ├── sequence_recogniser.py     # SequenceRecogniser(BaseAdapter)
+│   │   └── normalizer.py             # normalize_landmarks(), normalize_two_hand_landmarks(), HAND_CONNECTIONS
 │   ├── adapters/
-│   │   ├── websocket_adapter.py     # forwards events to POST /gesture (with debounce)
-│   │   ├── pc_adapter.py            # pynput media/arrow keys (reads gesture_actions.json)
-│   │   └── mqtt_adapter.py          # publishes JSON to MQTT broker
+│   │   ├── websocket_adapter.py       # on_gesture() + on_sequence() → POST /gesture + /sequence
+│   │   ├── pc_adapter.py              # pynput media keys
+│   │   └── mqtt_adapter.py            # MQTT publish
 │   ├── api/
-│   │   ├── server.py                # FastAPI app, static file serving, router includes
-│   │   ├── connection_manager.py    # WebSocket broadcast manager
-│   │   ├── models/gesture.py        # Pydantic GestureEvent model (API layer)
+│   │   ├── server.py                  # FastAPI app; POST /gesture, POST /sequence, WS /ws/gestures
+│   │   ├── connection_manager.py      # broadcast() + broadcast_json()
+│   │   ├── models/gesture.py          # Pydantic GestureEvent model
 │   │   └── routes/
-│   │       ├── dataset.py           # /api/dataset/* — capture, stats, upload
-│   │       ├── training.py          # /api/train/* — trigger, status, history
-│   │       ├── config.py            # /api/config/* — actions, thresholds
-│   │       └── sequences.py         # /api/sequences/* — placeholder
+│   │       ├── dataset.py             # CameraSession singleton + session/* + stats/cameras/upload/delete
+│   │       ├── training.py            # single + two_hand model training
+│   │       ├── config.py              # actions + thresholds
+│   │       └── sequences.py           # full CRUD + timing (route order matters — see gotcha above)
 │   ├── config/
-│   │   ├── gesture_actions.json     # static_actions + sequence_actions
-│   │   └── thresholds.json          # per-adapter + sequence_model threshold
+│   │   ├── gesture_actions.json       # static_actions (10 tokens) + sequence_actions
+│   │   ├── thresholds.json            # pc_adapter, websocket_adapter, sequence_model timing
+│   │   └── sequences.json             # user-defined sequence patterns
 │   ├── data/
-│   │   ├── gestures.csv             # training data (label + 42 floats)
-│   │   └── gestures/                # per-label .npy files
+│   │   ├── gestures.csv               # single-hand training data (label + 42 floats)
+│   │   ├── gestures/                  # per-label .npy files (single-hand)
+│   │   ├── gestures_two_hand.csv      # two-hand training data (label + 84 floats)
+│   │   └── gestures_two_hand/         # per-label .npy files (two-hand)
 │   ├── models/
-│   │   └── classifier.pkl           # {"model": ..., "label_encoder": ...}
+│   │   ├── classifier.pkl             # single-hand model artifact
+│   │   └── classifier_two_hand.pkl    # two-hand model (optional — pipeline falls back if absent)
+│   ├── lab/
+│   │   ├── augment.py                 # AugmentationEngine (42-float single-hand only)
+│   │   └── augment_gesture.py         # CLI wrapper
 │   └── frontend/
-│       ├── dashboard.html           # live monitoring page
-│       ├── studio.html              # data collection, training, config
+│       ├── dashboard.html             # live gesture monitoring
+│       ├── studio.html                # Dataset / Train / Config / Sequences tabs
 │       └── shared/
-│           ├── nav.js               # shared navigation component
-│           └── styles.css           # shared CSS variables
-├── scripts/
-│   ├── train.py                     # CLI training (also importable as run_training())
-│   ├── data_collector.py            # interactive CLI capture
-│   ├── bootstrap_augmented_dataset.py
-│   └── capture_demo.py
+│           ├── nav.js
+│           └── styles.css
+├── scripts/                           # fallback CLI tools only — not used by active pipeline
+│   ├── train.py
+│   └── bootstrap_augmented_dataset.py
+├── docs/
+│   ├── INTERFACE_CONTRACT.md          # this file
+│   ├── PLAN.md                        # original hackathon plan (Phases 0–5)
+│   ├── PHASE5_IMPLEMENTATION.md       # detailed implementation notes for Phases 5a–5d
+│   └── lab/
+│       └── FEATURE_synthetic_augmentation.md
 └── tests/
-    └── test_api.py
+    └── test_api.py                    # 39 tests, all passing
 ```
 
