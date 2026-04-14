@@ -11,6 +11,9 @@ dist/
 build/
 *.egg-info/
 
+# uv — lockfile not versioned
+uv.lock
+
 # ML artefacts
 src/models/*.pkl
 src/models/*.task
