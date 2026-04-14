@@ -31,6 +31,8 @@ class GestureToken(str, Enum):
     CANCEL  | Thumbs down           | Previous slide / cancel
     MODE    | Peace / V             | Switch adapter mode
     CUSTOM  | Shaka                 | User-defined
+    SNAP    | Finger snap           | Single-hand; user-defined
+    CLAP    | Two hands together    | Two-hand; user-defined
     """
 
     STOP    = "STOP"
@@ -41,6 +43,8 @@ class GestureToken(str, Enum):
     CANCEL  = "CANCEL"
     MODE    = "MODE"
     CUSTOM  = "CUSTOM"
+    SNAP    = "SNAP"
+    CLAP    = "CLAP"
 
 
 @dataclass

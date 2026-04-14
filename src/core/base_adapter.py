@@ -15,8 +15,12 @@ Implementing a new adapter:
 """
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 from .gesture_event import GestureEvent
+
+if TYPE_CHECKING:
+    from .sequence_event import SequenceEvent
 
 
 class BaseAdapter(ABC):
@@ -24,3 +28,11 @@ class BaseAdapter(ABC):
     def on_gesture(self, event: GestureEvent) -> None:
         """Called by the event bus for every emitted GestureEvent."""
         ...
+
+    def on_sequence(self, event: "SequenceEvent") -> None:
+        """Called by the event bus when a gesture sequence is matched.
+
+        Default implementation is a no-op. Override in adapters that should
+        react to sequence events (e.g. PCAdapter, WebSocketAdapter).
+        """
+        pass

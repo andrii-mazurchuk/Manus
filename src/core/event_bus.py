@@ -1,8 +1,12 @@
 import sys
 import threading
+from typing import TYPE_CHECKING
 
 from .base_adapter import BaseAdapter
 from .gesture_event import GestureEvent
+
+if TYPE_CHECKING:
+    from .sequence_event import SequenceEvent
 
 ADAPTER_DEBOUNCE_MS = 500  # minimum ms between successive firings of the same token
 
@@ -30,6 +34,16 @@ class EventBus:
                 adapter.on_gesture(event)
             except Exception as exc:
                 print(f"[EventBus] {adapter!r} raised: {exc}", file=sys.stderr)
+
+    def emit_sequence(self, event: "SequenceEvent") -> None:
+        """Broadcast a SequenceEvent to all registered adapters via on_sequence()."""
+        with self._lock:
+            snapshot = list(self._subscribers)
+        for adapter in snapshot:
+            try:
+                adapter.on_sequence(event)
+            except Exception as exc:
+                print(f"[EventBus] {adapter!r} raised on_sequence: {exc}", file=sys.stderr)
 
     def list_adapters(self) -> list[str]:
         with self._lock:

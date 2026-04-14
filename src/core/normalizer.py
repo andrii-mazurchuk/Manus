@@ -52,6 +52,56 @@ def normalize_landmarks(landmarks) -> np.ndarray:
     return normalize_coords(coords)
 
 
+def normalize_two_hand_landmarks(
+    primary_landmarks,
+    secondary_landmarks=None,
+) -> np.ndarray:
+    """
+    Normalize a two-hand landmark pair to a flat 84-float array.
+
+    Both hands are expressed in the primary hand's reference frame so that
+    inter-hand geometry (distance, relative position) is preserved.
+
+    Normalization contract:
+      1. Translate both hands so the primary wrist is at the origin.
+      2. Scale both by the primary hand's max(abs) — same scale factor.
+      3. If secondary hand is absent, its 42 floats are zero-padded.
+
+    Layout: [primary_x0, primary_y0, ..., primary_x20, primary_y20,
+             secondary_x0, secondary_y0, ..., secondary_x20, secondary_y20]
+
+    Args:
+        primary_landmarks:   Sequence of 21 objects with .x and .y
+                             (right hand by convention; or only hand present).
+        secondary_landmarks: Sequence of 21 objects with .x and .y, or None.
+
+    Returns:
+        float32 ndarray of shape (84,).
+    """
+    primary_coords = np.array(
+        [[lm.x, lm.y] for lm in primary_landmarks], dtype=np.float32
+    )
+    primary_wrist = primary_coords[0].copy()
+    primary_coords -= primary_wrist
+    scale = np.max(np.abs(primary_coords))
+    if scale > 0:
+        primary_coords /= scale
+    primary_flat = primary_coords.flatten()
+
+    if secondary_landmarks is not None:
+        secondary_coords = np.array(
+            [[lm.x, lm.y] for lm in secondary_landmarks], dtype=np.float32
+        )
+        secondary_coords -= primary_wrist          # same origin as primary
+        if scale > 0:
+            secondary_coords /= scale              # same scale as primary
+        secondary_flat = secondary_coords.flatten().astype(np.float32)
+    else:
+        secondary_flat = np.zeros(42, dtype=np.float32)
+
+    return np.concatenate([primary_flat, secondary_flat]).astype(np.float32)
+
+
 def normalize_coords(coords: np.ndarray) -> np.ndarray:
     """
     Normalize a (21, 2) landmark coordinate array.
