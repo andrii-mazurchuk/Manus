@@ -11,5 +11,6 @@
     "SNAP": "none",
     "CLAP": "none"
   },
-  "sequence_actions": {}
+  "sequence_actions": {},
+  "dynamic_actions": {}
 }

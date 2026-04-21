@@ -102,6 +102,48 @@ def normalize_two_hand_landmarks(
     return np.concatenate([primary_flat, secondary_flat]).astype(np.float32)
 
 
+def normalize_landmarks_xyz(landmarks) -> np.ndarray:
+    """
+    Convert a MediaPipe NormalizedLandmark list to a 63-float xyz array.
+
+    Used exclusively by the LSTM dynamic gesture pipeline. Different from
+    normalize_landmarks(): includes z depth and uses wrist-to-middle-MCP
+    Euclidean distance as the scale unit (not max-abs).
+
+    Args:
+        landmarks: Sequence of 21 objects with .x, .y, .z float attributes.
+
+    Returns:
+        float32 ndarray of shape (63,): [x0, y0, z0, x1, y1, z1, ..., x20, y20, z20]
+        Wrist-centred; scale is the wrist-to-middle-MCP joint distance.
+    """
+    coords = np.array([[lm.x, lm.y, lm.z] for lm in landmarks], dtype=np.float32)
+    return normalize_coords_xyz(coords)
+
+
+def normalize_coords_xyz(coords: np.ndarray) -> np.ndarray:
+    """
+    Normalize a (21, 3) landmark coordinate array for the LSTM pipeline.
+
+    Steps:
+      1. Translate so wrist (coords[0]) is at the origin.
+      2. Scale by Euclidean distance from wrist to middle-finger MCP (landmark 9).
+         Clamped to 1e-6 to avoid division by zero.
+
+    Args:
+        coords: float32 ndarray of shape (21, 3) — raw x, y, z values.
+
+    Returns:
+        float32 ndarray of shape (63,) — flat, normalised.
+    """
+    coords = coords.copy()
+    coords -= coords[0]                            # translate: wrist → origin
+    scale = float(np.linalg.norm(coords[9]))       # wrist-to-middle-MCP distance
+    if scale > 1e-6:
+        coords /= scale
+    return coords.flatten().astype(np.float32)
+
+
 def normalize_coords(coords: np.ndarray) -> np.ndarray:
     """
     Normalize a (21, 2) landmark coordinate array.

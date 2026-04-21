@@ -50,8 +50,32 @@ normalize_two_hand_landmarks(primary_landmarks, secondary_landmarks=None) -> np.
 - Two-hand path calls `run_two_hand_training()` → saves `classifier_two_hand.pkl`
 - `GET /api/train/status?model_type=two_hand` for two-hand status
 
-### Known gap
-No augmentation engine for 84-float two-hand data. `AugmentationEngine` only handles 42-float single-hand arrays. Two-hand snapshot capture saves 1 raw sample. This is a known limitation to address in a future phase.
+### Two-hand augmentation (`src/lab/augment.py`)
+
+`TwoHandAugmentationEngine` — added alongside `AugmentationEngine` in the same file.
+
+```python
+TwoHandAugmentationEngine(
+    rotation_range=30.0,
+    noise_sigma=0.02,
+    extension_range=0.10,
+    scale_range=0.05,
+    spread_range=5.0,
+    include_flip=True,
+    seed=None,
+)
+engine.generate(template: np.ndarray, n_samples: int) -> np.ndarray
+# template: (84,) float32 — [primary_42 | secondary_42]
+# returns:  (n_samples, 84) float32
+```
+
+Applies the same 7-step transform pipeline as `AugmentationEngine` with one critical difference: transforms that must preserve inter-hand geometry (rotation, global scale, horizontal flip) use the **same random value for both halves**. Finger extension and spread are independent per hand. The renormalization step (`_renormalize_two_hand`) subtracts the primary wrist position from all 84 coords and divides both halves by the same primary scale factor — mirroring `normalize_two_hand_landmarks()`.
+
+If the secondary half of the template is all zeros (single-hand capture in two-hand mode), secondary stays zero-padded in all output rows.
+
+`dataset.py` `_save_snapshot()` — two-hand snapshot branch now calls `TwoHandAugmentationEngine().generate(flat, n)` and writes `n` augmented rows to `gestures_two_hand.csv` + per-row `.npy` files. Result `mode` is `"snapshot"` (was `"snapshot_raw"`).
+
+Tests: `tests/test_two_hand_augment.py` — 16 unit tests (shape, dtype, wrist-at-origin invariant, secondary-absent behaviour, reproducibility, error handling, NaN/Inf safety, no-mutation guarantee).
 
 ---
 

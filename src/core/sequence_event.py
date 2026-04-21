@@ -43,6 +43,7 @@ class SequenceEvent:
     confidence: float
     timestamp:  float = field(default_factory=time.time)
     duration:   float = 0.0
+    source:     str   = ""   # "pattern" (SequenceRecogniser) or "lstm" (DynamicGestureEngine)
 
     def to_dict(self) -> dict:
         return {
@@ -52,4 +53,5 @@ class SequenceEvent:
             "confidence": round(self.confidence, 4),
             "timestamp":  self.timestamp,
             "duration":   round(self.duration, 4),
+            "source":     self.source,
         }

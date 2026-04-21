@@ -9,6 +9,7 @@ from pynput.keyboard import Controller, Key
 from src.core.base_adapter import BaseAdapter
 from src.core.event_bus import ADAPTER_DEBOUNCE_MS
 from src.core.gesture_event import GestureEvent, GestureToken
+from src.core.sequence_event import SequenceEvent
 
 load_dotenv()
 
@@ -39,8 +40,10 @@ class PCAdapter(BaseAdapter):
     def _load_actions(self) -> dict[str, str]:
         try:
             data = json.loads(_CONFIG_PATH.read_text())
+            self._dynamic_actions: dict[str, str] = data.get("dynamic_actions", {})
             return data["static_actions"]
         except Exception:
+            self._dynamic_actions = {}
             return dict(_DEFAULTS)
 
     def _press(self, key) -> None:
@@ -68,6 +71,17 @@ class PCAdapter(BaseAdapter):
             return
         self._last_fired[token] = now
         self._execute(token)
+
+    def on_sequence(self, event: SequenceEvent) -> None:
+        if event.source != "lstm":
+            return
+        action_name = self._dynamic_actions.get(event.name, "none")
+        fn = self._action_map.get(action_name)
+        if fn:
+            try:
+                fn()
+            except Exception as exc:
+                print(f"[PCAdapter] key action failed for dynamic gesture '{event.name}': {exc}")
 
     def _execute(self, token: GestureToken) -> None:
         try:

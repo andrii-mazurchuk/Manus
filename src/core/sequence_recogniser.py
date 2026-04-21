@@ -190,6 +190,7 @@ class SequenceRecogniser(BaseAdapter):
                     confidence=confidence,
                     timestamp=last_ts,
                     duration=round(last_ts - first_ts, 4),
+                    source="pattern",
                 )
                 results.append(seq_event)
                 self._last_fired[name] = now

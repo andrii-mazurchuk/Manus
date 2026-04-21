@@ -11,12 +11,16 @@ from mediapipe.tasks.python import vision as mp_vision
 from src.core.base_adapter import BaseAdapter
 from src.core.classifier import GestureClassifier
 from src.core.two_hand_classifier import TwoHandGestureClassifier
+from src.core.dynamic_gesture_engine import DynamicGestureEngine
 from src.core.event_bus import EventBus
 from src.core.gesture_event import GestureEvent, GestureToken
+from src.core.normalizer import normalize_landmarks_xyz
+from src.core.sequence_model import SequenceClassifier
 from src.core.sequence_recogniser import SequenceRecogniser
 from src.adapters.websocket_adapter import WebSocketAdapter
 from src.adapters.pc_adapter import PCAdapter
 from src.adapters.mqtt_adapter import MQTTAdapter
+from src.config.loader import load_dynamic_gestures_config
 
 MODEL_PATH = Path(__file__).parent / "src" / "models" / "hand_landmarker.task"
 
@@ -48,6 +52,27 @@ def run(camera_index: int, threshold: float) -> None:
     bus.register(PCAdapter())
     bus.register(MQTTAdapter())
     bus.register(SequenceRecogniser())
+
+    dg_cfg = load_dynamic_gestures_config()
+    try:
+        seq_clf = SequenceClassifier()
+    except FileNotFoundError:
+        seq_clf = None
+        print(
+            "[main] No sequence model found — dynamic gestures disabled. "
+            "Record sequences and train via Studio → Dynamic Gestures.",
+            file=sys.stderr,
+        )
+    try:
+        dge_trigger = GestureToken(dg_cfg["trigger_token"])
+    except ValueError:
+        dge_trigger = GestureToken.UP
+    dge = DynamicGestureEngine(
+        classifier=seq_clf,
+        trigger_token=dge_trigger,
+        arm_threshold=float(dg_cfg.get("arm_threshold", 0.75)),
+    )
+    bus.register(dge)
 
     if not MODEL_PATH.exists():
         sys.exit(
@@ -84,6 +109,7 @@ def run(camera_index: int, threshold: float) -> None:
             result = detector.detect(mp_image)
 
             if not result.hand_landmarks:
+                dge.notify_no_hand()
                 cv2.imshow("Manus -- Main Pipeline", frame)
                 if cv2.waitKey(1) & 0xFF in (ord("q"), ord("Q"), 27):
                     break
@@ -128,6 +154,9 @@ def run(camera_index: int, threshold: float) -> None:
                         bus.emit(GestureEvent(token, float(conf), label_index, time.time()))
                     except ValueError:
                         pass
+
+            # Feed 63-float frame to the dynamic gesture engine (LSTM pipeline).
+            dge.feed_frame(normalize_landmarks_xyz(primary))
 
             cv2.imshow("Manus -- Main Pipeline", frame)
             if cv2.waitKey(1) & 0xFF in (ord("q"), ord("Q"), 27):

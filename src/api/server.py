@@ -7,6 +7,7 @@ from src.api.connection_manager import ConnectionManager
 from src.core.gesture_event import GestureToken
 from src.core.event_bus import EventBus
 from src.api.routes import dataset, training, config as config_router, sequences
+from src.api.routes import dynamic_dataset, dynamic_gestures_config, dynamic_training
 from pydantic import BaseModel
 
 app = FastAPI(title="Manus API")
@@ -22,6 +23,9 @@ app.include_router(dataset.router)
 app.include_router(training.router)
 app.include_router(config_router.router)
 app.include_router(sequences.router)
+app.include_router(dynamic_dataset.router)
+app.include_router(dynamic_gestures_config.router)
+app.include_router(dynamic_training.router)
 
 connection_manager = ConnectionManager()
 
@@ -43,6 +47,7 @@ class SequencePayload(BaseModel):
     confidence: float
     timestamp:  float
     duration:   float
+    source:     str = ""
 
 
 @app.post("/sequence")

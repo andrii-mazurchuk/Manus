@@ -19,6 +19,7 @@ _VALID_ACTIONS = {"mute", "unmute", "volume_up", "volume_down", "next_slide", "p
 class ActionsPayload(BaseModel):
     static_actions: dict[str, str]
     sequence_actions: dict = {}
+    dynamic_actions: dict[str, str] = {}
 
     @field_validator("static_actions")
     @classmethod
