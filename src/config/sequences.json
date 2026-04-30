@@ -1,0 +1,13 @@
+{
+  "sequences": [
+    {
+      "name": "double_stop",
+      "pattern": [
+        "STOP",
+        "STOP",
+        "STOP"
+      ],
+      "action": "none"
+    }
+  ]
+}

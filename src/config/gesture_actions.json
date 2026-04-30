@@ -1,0 +1,16 @@
+{
+  "static_actions": {
+    "STOP": "mute",
+    "PLAY": "unmute",
+    "UP": "volume_up",
+    "DOWN": "volume_down",
+    "CONFIRM": "next_slide",
+    "CANCEL": "prev_slide",
+    "MODE": "none",
+    "CUSTOM": "none",
+    "SNAP": "none",
+    "CLAP": "none"
+  },
+  "sequence_actions": {},
+  "dynamic_actions": {}
+}

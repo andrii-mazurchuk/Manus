@@ -1,0 +1,44 @@
+{
+  "gestures": [
+    {
+      "name": "STOP",
+      "threshold": 0.7
+    },
+    {
+      "name": "PLAY",
+      "threshold": 0.7
+    },
+    {
+      "name": "UP",
+      "threshold": 0.7
+    },
+    {
+      "name": "DOWN",
+      "threshold": 0.7
+    },
+    {
+      "name": "CONFIRM",
+      "threshold": 0.7
+    },
+    {
+      "name": "CANCEL",
+      "threshold": 0.7
+    },
+    {
+      "name": "MODE",
+      "threshold": 0.7
+    },
+    {
+      "name": "CUSTOM",
+      "threshold": 0.7
+    },
+    {
+      "name": "SNAP",
+      "threshold": 0.7
+    },
+    {
+      "name": "CLAP",
+      "threshold": 0.7
+    }
+  ]
+}
